@@ -1,5 +1,6 @@
 package com.sef.chintaultimate.activities;
 
+import android.os.AsyncTask;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.ImageView;
@@ -9,6 +10,10 @@ import androidx.appcompat.app.AppCompatActivity;
 
 import com.sef.chintaultimate.R;
 import com.sef.chintaultimate.activities.CreateNoteActivity;
+import com.sef.chintaultimate.database.NotesDatabase;
+import com.sef.chintaultimate.entities.Note;
+
+import java.util.List;
 
 
 public class MainActivity extends AppCompatActivity {
@@ -43,5 +48,28 @@ public class MainActivity extends AppCompatActivity {
 
 
         });
+
+        private void getNotes(){
+
+            class GetNotesTask extends AsyncTask<Void, Void, List<Note>>{
+
+                @Override
+                protected List<Note> doInBackground(Void... voids) {
+
+                    return NotesDatabase
+                            .getDatabase(getApplicationContext())
+                            .noteDao().getAllNotes();
+
+                }
+
+
+                @Override
+                protected void onPostExecutive(List<Note> notes){
+                    super.onPostExecute(notes);
+                }
+
+            }
+
+        }
     }
 }
