@@ -113,7 +113,7 @@
                 android:layout_height="0dp"
                 android:layout_marginStart="@dimen/_12sdp"
                 android:background="@drawable/background_subtitle_indicator"
-                app:layout_constraintBottom_toBottomOf="@+id/inputNoteTitle"
+                app:layout_constraintBottom_toBottomOf="@+id/inputNoteSubtitle"
                 app:layout_constraintStart_toStartOf="parent"
                 app:layout_constraintTop_toTopOf="@+id/inputNoteSubtitle"   />
 
