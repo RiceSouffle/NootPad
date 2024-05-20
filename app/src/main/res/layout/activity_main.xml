@@ -43,8 +43,7 @@
         android:layout_height="@dimen/_20sdp"
         android:contentDescription="@string/app_name"
         android:src="@drawable/ic_search"
-        app:tint="@color/colorWhite" />
-
+        app:tint="@color/colorSearchIcon"/>
 
     <EditText
         android:id="@+id/inputSearch"
@@ -65,6 +64,16 @@
 
     </LinearLayout>
 
+
+    <LinearLayout
+        android:id="@+id/layoutQuickActions"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@color/colorQuickActionsBackground"
+        android:gravity="center_vertical"
+        android:orientation="horizontal"
+        android:padding="@dimen/_15sdp"
+        app:layout_constraintBottom_toBottomOf="parent"/>
 
 
 
