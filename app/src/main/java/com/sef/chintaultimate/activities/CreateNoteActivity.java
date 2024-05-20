@@ -1,4 +1,4 @@
-package com.sef.chintaultimate;
+package com.sef.chintaultimate.activities;
 
 import android.os.Bundle;
 import android.view.View;
@@ -11,38 +11,23 @@ import androidx.core.graphics.Insets;
 import androidx.core.view.ViewCompat;
 import androidx.core.view.WindowInsetsCompat;
 
+import com.sef.chintaultimate.R;
 
-public class MainActivity extends AppCompatActivity {
-
-
-
-    public static final int REQUEST_CODE_ADD_NOTE = 1;
-
+public class CreateNoteActivity extends AppCompatActivity {
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_main);
+        setContentView(R.layout.activity_create_note);
 
+        ImageView imageBack = findViewById(R.id.imageBack);
 
-
-        ImageView imageAddNoteMain = findViewById(R.id.imageAddNoteMain);
-        imageAddNoteMain.setOnClickListener(new View.OnClickListener(){
-
+        imageBack.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-
-                startActivityForResult(
-                        new Intent(getApplicationContext(), CreateNoteActivity.class),
-                        REQUEST_CODE_ADD_NOTE
-
-
-                );
-
-
+                onBackPressed();
             }
-
-
         });
+
     }
 }
