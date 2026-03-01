@@ -9,7 +9,7 @@ class AppSearchBar extends StatefulWidget {
   const AppSearchBar({
     super.key,
     required this.onChanged,
-    this.hintText = 'Search notes...',
+    this.hintText = 'Search Noots...',
   });
 
   @override

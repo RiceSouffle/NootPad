@@ -319,7 +319,7 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
                               color: AppColors.textDark,
                             ),
                             decoration: InputDecoration(
-                              hintText: 'Note title...',
+                              hintText: 'Noot title...',
                               hintStyle: GoogleFonts.quicksand(
                                 fontSize: 24,
                                 fontWeight: FontWeight.w700,
@@ -659,7 +659,7 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
           ),
           const Spacer(),
           Text(
-            _isNewNote ? 'New Note' : 'Edit Note',
+            _isNewNote ? 'New Noot' : 'Edit Noot',
             style: GoogleFonts.quicksand(
               fontSize: 16,
               fontWeight: FontWeight.w700,

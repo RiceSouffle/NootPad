@@ -102,7 +102,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ),
             const SizedBox(height: 20),
             Text(
-              note.title.isEmpty ? 'Untitled Note' : note.title,
+              note.title.isEmpty ? 'Untitled Noot' : note.title,
               style: GoogleFonts.quicksand(
                 fontSize: 18,
                 fontWeight: FontWeight.w700,
@@ -116,7 +116,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
               icon: note.isPinned
                   ? Icons.push_pin_rounded
                   : Icons.push_pin_outlined,
-              label: note.isPinned ? 'Unpin Note' : 'Pin Note',
+              label: note.isPinned ? 'Unpin Noot' : 'Pin Noot',
               onTap: () {
                 provider.togglePin(noteId);
                 Navigator.pop(ctx);
@@ -124,7 +124,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ),
             _buildOptionTile(
               icon: Icons.edit_rounded,
-              label: 'Edit Note',
+              label: 'Edit Noot',
               onTap: () {
                 Navigator.pop(ctx);
                 _openNote(context, noteId: noteId);
@@ -132,7 +132,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ),
             _buildOptionTile(
               icon: Icons.delete_outline_rounded,
-              label: 'Delete Note',
+              label: 'Delete Noot',
               color: AppColors.danger,
               onTap: () {
                 Navigator.pop(ctx);
@@ -184,14 +184,14 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           side: const BorderSide(color: AppColors.divider, width: 2),
         ),
         title: Text(
-          'Delete Note?',
+          'Delete Noot?',
           style: GoogleFonts.quicksand(
             fontWeight: FontWeight.w700,
             color: AppColors.textDark,
           ),
         ),
         content: Text(
-          'This note will be gone forever! Are you sure?',
+          'This Noot will be gone forever! Are you sure?',
           style: GoogleFonts.quicksand(color: AppColors.textMedium),
         ),
         actions: [
@@ -280,7 +280,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 ),
               ),
               child: Text(
-                '${provider.totalNotes} notes',
+                '${provider.totalNotes} Noots',
                 style: GoogleFonts.quicksand(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
@@ -350,7 +350,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  'Loading notes...',
+                  'Loading Noots...',
                   style: GoogleFonts.quicksand(
                     color: AppColors.textOnSand,
                     fontWeight: FontWeight.w600,
@@ -403,7 +403,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             ),
             const SizedBox(height: 20),
             Text(
-              isSearching ? 'No notes found!' : 'No notes yet!',
+              isSearching ? 'No Noots found!' : 'No Noots yet!',
               style: GoogleFonts.quicksand(
                 fontSize: 20,
                 fontWeight: FontWeight.w700,
@@ -414,7 +414,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
             Text(
               isSearching
                   ? 'Try a different search term'
-                  : 'Tap + to write your first note',
+                  : 'Tap + to write your first Noot',
               style: GoogleFonts.quicksand(
                 fontSize: 14,
                 color: AppColors.textOnSand.withValues(alpha: 0.5),
