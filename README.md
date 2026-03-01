@@ -87,7 +87,10 @@ lib/
 - Inline images from gallery or camera
 - Rich formatting previews on note cards — what you write is what you see
 - Custom app icon featuring the NootPad leaf logo
-![alt text](image-7.png)
+
+<p align="center">
+  <img src="image-7.png" width="200" alt="Rich text & checklists" />
+</p>
 
 ## Getting Started
 
