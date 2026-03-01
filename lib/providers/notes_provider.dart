@@ -121,6 +121,50 @@ class NotesProvider extends ChangeNotifier {
     }
   }
 
+  /// Toggle a checklist item's checked state directly from the home card.
+  /// [opIndex] is the index of the \n operation in the Delta JSON array.
+  Future<void> toggleChecklistItem(String noteId, int opIndex) async {
+    final index = _notes.indexWhere((n) => n.id == noteId);
+    if (index == -1) return;
+
+    final note = _notes[index];
+    if (!note.isDelta || note.content.isEmpty) return;
+
+    try {
+      final ops = List<dynamic>.from(jsonDecode(note.content) as List);
+      if (opIndex < 0 || opIndex >= ops.length) return;
+
+      final op =
+          Map<String, dynamic>.from(ops[opIndex] as Map<String, dynamic>);
+      final attrs = Map<String, dynamic>.from(
+          op['attributes'] as Map<String, dynamic>? ?? {});
+
+      if (attrs['list'] == 'checked') {
+        attrs['list'] = 'unchecked';
+      } else if (attrs['list'] == 'unchecked') {
+        attrs['list'] = 'checked';
+      } else {
+        return; // Not a checklist item
+      }
+
+      op['attributes'] = attrs;
+      ops[opIndex] = op;
+
+      final updatedContent = jsonEncode(ops);
+      final updated = note.copyWith(
+        content: updatedContent,
+        updatedAt: DateTime.now(),
+      );
+
+      await _dbService.updateNote(updated);
+      _notes[index] = updated;
+      _applyFilters();
+      notifyListeners();
+    } catch (_) {
+      // Failed to toggle checklist item, silently ignore
+    }
+  }
+
   void setSearchQuery(String query) {
     _searchQuery = query;
     _applyFilters();

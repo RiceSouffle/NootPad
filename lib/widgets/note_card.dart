@@ -1,9 +1,42 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
+import 'package:provider/provider.dart';
 import '../models/note.dart';
 import '../providers/notes_provider.dart';
 import '../theme/app_theme.dart';
+
+/// A text segment with optional inline formatting attributes.
+class _TextSegment {
+  final String text;
+  final Map<String, dynamic>? attrs;
+
+  const _TextSegment({required this.text, this.attrs});
+}
+
+/// A parsed line from a Quill Delta document.
+class _DeltaLine {
+  final List<_TextSegment> segments;
+  final Map<String, dynamic>? blockAttrs;
+  final int newlineOpIndex;
+
+  const _DeltaLine({
+    required this.segments,
+    this.blockAttrs,
+    required this.newlineOpIndex,
+  });
+
+  bool get isChecklist =>
+      blockAttrs?['list'] == 'checked' || blockAttrs?['list'] == 'unchecked';
+  bool get isChecked => blockAttrs?['list'] == 'checked';
+  bool get isHeading => blockAttrs != null && blockAttrs!.containsKey('header');
+  int get headingLevel => (blockAttrs?['header'] as int?) ?? 0;
+  bool get isBulletList => blockAttrs?['list'] == 'bullet';
+  bool get isOrderedList => blockAttrs?['list'] == 'ordered';
+  String get plainText => segments.map((s) => s.text).join();
+  bool get isEmpty => segments.every((s) => s.text.trim().isEmpty);
+}
 
 class NoteCard extends StatelessWidget {
   final Note note;
@@ -24,6 +57,9 @@ class NoteCard extends StatelessWidget {
         .withLightness(
             (HSLColor.fromColor(noteColor).lightness - 0.1).clamp(0.0, 1.0))
         .toColor();
+
+    // Build content preview once (avoids double-parsing Delta)
+    final contentPreview = _buildContentPreview(context);
 
     return GestureDetector(
       onTap: onTap,
@@ -95,18 +131,9 @@ class NoteCard extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
               ),
 
-              if (_hasContent(note)) ...[
+              if (contentPreview != null) ...[
                 const SizedBox(height: 6),
-                Text(
-                  _getPreviewText(note),
-                  style: GoogleFonts.quicksand(
-                    fontSize: 13,
-                    color: AppColors.textMedium,
-                    height: 1.4,
-                  ),
-                  maxLines: 4,
-                  overflow: TextOverflow.ellipsis,
-                ),
+                contentPreview,
               ],
 
               const SizedBox(height: 8),
@@ -127,16 +154,280 @@ class NoteCard extends StatelessWidget {
     );
   }
 
-  bool _hasContent(Note note) {
-    final text = _getPreviewText(note);
-    return text.isNotEmpty;
+  /// Builds the content preview area of the card.
+  /// Returns null if there is no content to display.
+  Widget? _buildContentPreview(BuildContext context) {
+    // Plain text notes — simple text preview
+    if (!note.isDelta || note.content.isEmpty) {
+      if (note.content.isEmpty) return null;
+      return Text(
+        note.content,
+        style: GoogleFonts.quicksand(
+          fontSize: 13,
+          color: AppColors.textMedium,
+          height: 1.4,
+        ),
+        maxLines: 4,
+        overflow: TextOverflow.ellipsis,
+      );
+    }
+
+    // Delta note — parse into structured lines
+    final lines = _parseDeltaLines();
+    final nonEmptyLines = lines.where((l) => !l.isEmpty).toList();
+    if (nonEmptyLines.isEmpty) return null;
+
+    // Build preview widgets (max 6 lines)
+    final displayLines = nonEmptyLines.take(6).toList();
+    final widgets = <Widget>[];
+    int orderedListCounter = 0;
+
+    for (int i = 0; i < displayLines.length; i++) {
+      final line = displayLines[i];
+
+      if (line.isOrderedList) {
+        orderedListCounter++;
+      } else {
+        orderedListCounter = 0;
+      }
+
+      if (line.isChecklist) {
+        widgets.add(_buildChecklistRow(context, line));
+      } else {
+        widgets.add(_buildRichTextLine(line, orderedListCounter));
+      }
+    }
+
+    // Show remaining count
+    if (nonEmptyLines.length > 6) {
+      widgets.add(
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Text(
+            '+${nonEmptyLines.length - 6} more',
+            style: GoogleFonts.quicksand(
+              fontSize: 11,
+              color: AppColors.textLight,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: widgets,
+    );
   }
 
-  String _getPreviewText(Note note) {
-    if (note.isDelta) {
-      return NotesProvider.getPlainText(note);
+  /// Build an interactive checklist row for the card.
+  Widget _buildChecklistRow(BuildContext context, _DeltaLine line) {
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () {
+        context
+            .read<NotesProvider>()
+            .toggleChecklistItem(note.id, line.newlineOpIndex);
+      },
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Icon(
+              line.isChecked
+                  ? Icons.check_box_rounded
+                  : Icons.check_box_outline_blank_rounded,
+              size: 18,
+              color:
+                  line.isChecked ? AppColors.leafGreen : AppColors.textLight,
+            ),
+            const SizedBox(width: 6),
+            Expanded(
+              child: _buildChecklistText(line),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Build text for a checklist item with strikethrough when checked.
+  Widget _buildChecklistText(_DeltaLine line) {
+    final isChecked = line.isChecked;
+    final baseColor = isChecked ? AppColors.textLight : AppColors.textMedium;
+
+    if (line.segments.isEmpty) {
+      return Text('', style: GoogleFonts.quicksand(fontSize: 12));
     }
-    return note.content;
+
+    final spans = <InlineSpan>[];
+    for (final seg in line.segments) {
+      TextStyle segStyle = GoogleFonts.quicksand(
+        fontSize: 12,
+        color: baseColor,
+        decoration:
+            isChecked ? TextDecoration.lineThrough : TextDecoration.none,
+        decorationColor: isChecked ? AppColors.textLight : null,
+        decorationThickness: 2.0,
+        height: 1.3,
+      );
+
+      if (seg.attrs != null && !isChecked) {
+        if (seg.attrs!['bold'] == true) {
+          segStyle = segStyle.copyWith(fontWeight: FontWeight.w700);
+        }
+        if (seg.attrs!['italic'] == true) {
+          segStyle = segStyle.copyWith(fontStyle: FontStyle.italic);
+        }
+      }
+
+      spans.add(TextSpan(text: seg.text, style: segStyle));
+    }
+
+    return RichText(
+      text: TextSpan(children: spans),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+    );
+  }
+
+  /// Build a rich text line (with formatting, bullet/number prefix, heading style).
+  Widget _buildRichTextLine(_DeltaLine line, int orderedIndex) {
+    // Determine base style based on line type
+    TextStyle baseStyle;
+    if (line.isHeading) {
+      final fontSize = line.headingLevel == 1 ? 15.0 : 14.0;
+      baseStyle = GoogleFonts.quicksand(
+        fontSize: fontSize,
+        fontWeight: FontWeight.w700,
+        color: AppColors.textDark,
+        height: 1.3,
+      );
+    } else {
+      baseStyle = GoogleFonts.quicksand(
+        fontSize: 13,
+        color: AppColors.textMedium,
+        height: 1.4,
+      );
+    }
+
+    final spans = <InlineSpan>[];
+
+    // Add list prefix
+    if (line.isBulletList) {
+      spans.add(TextSpan(
+        text: '• ',
+        style: baseStyle.copyWith(color: AppColors.textLight),
+      ));
+    } else if (line.isOrderedList && orderedIndex > 0) {
+      spans.add(TextSpan(
+        text: '$orderedIndex. ',
+        style: baseStyle.copyWith(color: AppColors.textLight),
+      ));
+    }
+
+    // Add formatted text segments
+    for (final seg in line.segments) {
+      TextStyle segStyle = baseStyle;
+
+      if (seg.attrs != null) {
+        FontWeight? weight;
+        FontStyle? fontStyle;
+        TextDecoration? decoration;
+
+        if (seg.attrs!['bold'] == true) {
+          weight = FontWeight.w700;
+        }
+        if (seg.attrs!['italic'] == true) {
+          fontStyle = FontStyle.italic;
+        }
+        if (seg.attrs!['underline'] == true) {
+          decoration = TextDecoration.underline;
+        }
+        if (seg.attrs!['strike'] == true) {
+          decoration = TextDecoration.lineThrough;
+        }
+
+        segStyle = segStyle.copyWith(
+          fontWeight: weight ?? segStyle.fontWeight,
+          fontStyle: fontStyle,
+          decoration: decoration,
+        );
+      }
+
+      spans.add(TextSpan(text: seg.text, style: segStyle));
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 1),
+      child: RichText(
+        text: TextSpan(children: spans),
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+      ),
+    );
+  }
+
+  /// Parse the Delta JSON into structured lines with segments and block attributes.
+  List<_DeltaLine> _parseDeltaLines() {
+    if (!note.isDelta || note.content.isEmpty) return [];
+
+    try {
+      final ops = jsonDecode(note.content) as List;
+      final lines = <_DeltaLine>[];
+      var currentSegments = <_TextSegment>[];
+
+      for (int i = 0; i < ops.length; i++) {
+        final op = ops[i] as Map<String, dynamic>;
+        final insert = op['insert'];
+        final attrs = op['attributes'] as Map<String, dynamic>?;
+
+        if (insert is String) {
+          if (insert == '\n') {
+            lines.add(_DeltaLine(
+              segments: List.from(currentSegments),
+              blockAttrs: attrs,
+              newlineOpIndex: i,
+            ));
+            currentSegments = [];
+          } else if (insert.contains('\n')) {
+            // Multi-character insert with embedded newlines
+            final parts = insert.split('\n');
+            for (int j = 0; j < parts.length; j++) {
+              if (parts[j].isNotEmpty) {
+                currentSegments
+                    .add(_TextSegment(text: parts[j], attrs: attrs));
+              }
+              if (j < parts.length - 1) {
+                // Inline newline — no block attributes
+                lines.add(_DeltaLine(
+                  segments: List.from(currentSegments),
+                  newlineOpIndex: i,
+                ));
+                currentSegments = [];
+              }
+            }
+          } else {
+            currentSegments.add(_TextSegment(text: insert, attrs: attrs));
+          }
+        }
+        // Skip embed ops (images) for card preview
+      }
+
+      // Add any trailing segments without a newline
+      if (currentSegments.isNotEmpty) {
+        lines.add(_DeltaLine(
+          segments: currentSegments,
+          newlineOpIndex: -1,
+        ));
+      }
+
+      return lines;
+    } catch (_) {
+      return [];
+    }
   }
 
   String _formatDate(DateTime date) {

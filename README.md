@@ -45,8 +45,10 @@ Most note apps feel cold and utilitarian. NootPad takes a different approach —
 | Layer | Tool |
 |---|---|
 | Framework | Flutter (Dart) — single codebase for iOS & Android |
+| Rich Text Editor | flutter_quill (Quill Delta) |
 | State Management | Provider |
 | Database | sqflite (SQLite) |
+| Images | image_picker + path_provider |
 | Typography | Google Fonts (Quicksand) |
 | Layout | flutter_staggered_grid_view |
 
@@ -56,24 +58,36 @@ Most note apps feel cold and utilitarian. NootPad takes a different approach —
 lib/
   main.dart                        # App entry point
   models/
-    note.dart                      # Note data model
+    note.dart                      # Note data model (plain + Delta formats)
   services/
-    database_service.dart          # SQLite persistence layer
+    database_service.dart          # SQLite persistence layer (v2 schema)
+    image_service.dart             # Gallery/camera image handling
   providers/
-    notes_provider.dart            # Reactive state management
+    notes_provider.dart            # Reactive state + checklist toggling
   theme/
     app_theme.dart                 # Design system (colors, theme, decorations)
   screens/
     home_screen.dart               # Main notes grid view
-    edit_note_screen.dart          # Note creation & editing
+    edit_note_screen.dart          # Rich text editor with formatting toolbar
   widgets/
-    note_card.dart                 # Pastel note card component
+    note_card.dart                 # Rich text preview + interactive checkboxes
     app_search_bar.dart            # Search bar
     color_picker.dart              # Note color selector
     category_chip.dart             # Category filter chip
     leaf_painter.dart              # Custom-painted leaf logo & decorations
 ```
 
+
+## What's New
+
+**v1.1 — Rich Text & Checklists**
+- Full rich text editor powered by Quill — bold, italic, underline, strikethrough, headings
+- Interactive checklists you can tick off right from the homepage, no need to open the note
+- Bullet and numbered lists
+- Inline images from gallery or camera
+- Rich formatting previews on note cards — what you write is what you see
+- Custom app icon featuring the NootPad leaf logo
+![alt text](image-7.png)
 
 ## Getting Started
 

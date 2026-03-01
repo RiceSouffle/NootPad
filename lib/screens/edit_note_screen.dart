@@ -465,76 +465,72 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
           ),
         ),
       ),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-        child: Row(
-          children: [
-            // Text formatting
-            _buildFormatButton(
-              icon: Icons.format_bold_rounded,
-              attribute: Attribute.bold,
-              tooltip: 'Bold',
-            ),
-            _buildFormatButton(
-              icon: Icons.format_italic_rounded,
-              attribute: Attribute.italic,
-              tooltip: 'Italic',
-            ),
-            _buildFormatButton(
-              icon: Icons.format_underlined_rounded,
-              attribute: Attribute.underline,
-              tooltip: 'Underline',
-            ),
-            _buildFormatButton(
-              icon: Icons.format_strikethrough_rounded,
-              attribute: Attribute.strikeThrough,
-              tooltip: 'Strikethrough',
-            ),
-
-            _buildToolbarDivider(),
-
-            // Headings
-            _buildBlockButton(
-              icon: Icons.title_rounded,
-              attribute: Attribute.h1,
-              tooltip: 'Heading 1',
-            ),
-            _buildBlockButton(
-              icon: Icons.text_fields_rounded,
-              attribute: Attribute.h2,
-              tooltip: 'Heading 2',
-            ),
-
-            _buildToolbarDivider(),
-
-            // Lists
-            _buildBlockButton(
-              icon: Icons.format_list_bulleted_rounded,
-              attribute: Attribute.ul,
-              tooltip: 'Bullet List',
-            ),
-            _buildBlockButton(
-              icon: Icons.format_list_numbered_rounded,
-              attribute: Attribute.ol,
-              tooltip: 'Numbered List',
-            ),
-            _buildBlockButton(
-              icon: Icons.checklist_rounded,
-              attribute: Attribute.unchecked,
-              tooltip: 'Checklist',
-            ),
-
-            _buildToolbarDivider(),
-
-            // Image
-            _buildToolButton(
-              icon: Icons.image_rounded,
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          _buildFormatButton(
+            icon: Icons.format_bold_rounded,
+            attribute: Attribute.bold,
+            tooltip: 'Bold',
+          ),
+          _buildFormatButton(
+            icon: Icons.format_italic_rounded,
+            attribute: Attribute.italic,
+            tooltip: 'Italic',
+          ),
+          _buildFormatButton(
+            icon: Icons.format_underlined_rounded,
+            attribute: Attribute.underline,
+            tooltip: 'Underline',
+          ),
+          _buildFormatButton(
+            icon: Icons.format_strikethrough_rounded,
+            attribute: Attribute.strikeThrough,
+            tooltip: 'Strikethrough',
+          ),
+          _buildToolbarDivider(),
+          _buildBlockButton(
+            icon: Icons.title_rounded,
+            attribute: Attribute.h1,
+            tooltip: 'Heading',
+          ),
+          _buildBlockButton(
+            icon: Icons.format_list_bulleted_rounded,
+            attribute: Attribute.ul,
+            tooltip: 'Bullets',
+          ),
+          _buildBlockButton(
+            icon: Icons.format_list_numbered_rounded,
+            attribute: Attribute.ol,
+            tooltip: 'Numbered',
+          ),
+          _buildBlockButton(
+            icon: Icons.checklist_rounded,
+            attribute: Attribute.unchecked,
+            tooltip: 'Checklist',
+          ),
+          // Image button (teal circle, visually distinct)
+          Tooltip(
+            message: 'Add Image',
+            child: GestureDetector(
               onTap: _showImagePicker,
-              tooltip: 'Add Image',
+              child: Container(
+                width: 30,
+                height: 30,
+                decoration: const BoxDecoration(
+                  color: AppColors.teal,
+                  shape: BoxShape.circle,
+                ),
+                child: const Icon(
+                  Icons.image_rounded,
+                  color: Colors.white,
+                  size: 16,
+                ),
+              ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
@@ -557,9 +553,8 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
         },
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
-          width: 36,
-          height: 36,
-          margin: const EdgeInsets.symmetric(horizontal: 2),
+          width: 30,
+          height: 30,
           decoration: BoxDecoration(
             color: isActive
                 ? AppColors.leafGreen.withValues(alpha: 0.15)
@@ -604,9 +599,8 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
         },
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
-          width: 36,
-          height: 36,
-          margin: const EdgeInsets.symmetric(horizontal: 2),
+          width: 30,
+          height: 30,
           decoration: BoxDecoration(
             color: isActive
                 ? AppColors.leafGreen.withValues(alpha: 0.15)
@@ -631,9 +625,9 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
 
   Widget _buildToolbarDivider() {
     return Container(
-      width: 1.5,
-      height: 24,
-      margin: const EdgeInsets.symmetric(horizontal: 6),
+      width: 1,
+      height: 20,
+      margin: const EdgeInsets.symmetric(horizontal: 2),
       color: AppColors.divider,
     );
   }
