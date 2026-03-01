@@ -224,6 +224,13 @@ class AppDecorations {
         ],
       );
 
+  static BoxDecoration get toolbarDecoration => BoxDecoration(
+        color: AppColors.surfaceWarm,
+        border: const Border(
+          top: BorderSide(color: AppColors.divider, width: 1.5),
+        ),
+      );
+
   static BoxDecoration get bottomBarDecoration => BoxDecoration(
         color: AppColors.surfaceWarm,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),

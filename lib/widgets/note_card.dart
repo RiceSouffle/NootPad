@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import '../models/note.dart';
+import '../providers/notes_provider.dart';
 import '../theme/app_theme.dart';
 
 class NoteCard extends StatelessWidget {
@@ -94,10 +95,10 @@ class NoteCard extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
               ),
 
-              if (note.content.isNotEmpty) ...[
+              if (_hasContent(note)) ...[
                 const SizedBox(height: 6),
                 Text(
-                  note.content,
+                  _getPreviewText(note),
                   style: GoogleFonts.quicksand(
                     fontSize: 13,
                     color: AppColors.textMedium,
@@ -124,6 +125,18 @@ class NoteCard extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  bool _hasContent(Note note) {
+    final text = _getPreviewText(note);
+    return text.isNotEmpty;
+  }
+
+  String _getPreviewText(Note note) {
+    if (note.isDelta) {
+      return NotesProvider.getPlainText(note);
+    }
+    return note.content;
   }
 
   String _formatDate(DateTime date) {

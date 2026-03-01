@@ -1,9 +1,14 @@
+import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter_quill/flutter_quill.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../models/note.dart';
 import '../providers/notes_provider.dart';
+import '../services/image_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/color_picker.dart';
 
@@ -18,8 +23,10 @@ class EditNoteScreen extends StatefulWidget {
 
 class _EditNoteScreenState extends State<EditNoteScreen> {
   late TextEditingController _titleController;
-  late TextEditingController _contentController;
+  late QuillController _quillController;
   late TextEditingController _categoryController;
+  late ScrollController _editorScrollController;
+  late FocusNode _editorFocusNode;
   String _selectedColor = 'cream';
   bool _isNewNote = true;
   Note? _existingNote;
@@ -38,8 +45,15 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
   void initState() {
     super.initState();
     _titleController = TextEditingController();
-    _contentController = TextEditingController();
+    _quillController = QuillController.basic();
     _categoryController = TextEditingController(text: 'General');
+    _editorScrollController = ScrollController();
+    _editorFocusNode = FocusNode();
+
+    // Rebuild toolbar when selection/formatting changes
+    _quillController.addListener(() {
+      if (mounted) setState(() {});
+    });
 
     if (widget.noteId != null) {
       _isNewNote = false;
@@ -55,31 +69,66 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
       _existingNote = provider.notes.firstWhere((n) => n.id == widget.noteId);
       setState(() {
         _titleController.text = _existingNote!.title;
-        _contentController.text = _existingNote!.content;
         _categoryController.text = _existingNote!.category;
         _selectedColor = _existingNote!.color;
+
+        // Load content based on format
+        if (_existingNote!.isDelta && _existingNote!.content.isNotEmpty) {
+          try {
+            final json = jsonDecode(_existingNote!.content) as List;
+            final doc = Document.fromJson(json);
+            _quillController.dispose();
+            _quillController = QuillController(
+              document: doc,
+              selection: const TextSelection.collapsed(offset: 0),
+            );
+            _quillController.addListener(() {
+              if (mounted) setState(() {});
+            });
+          } catch (_) {
+            // Fallback: treat as plain text
+            _loadPlainTextContent(_existingNote!.content);
+          }
+        } else if (_existingNote!.content.isNotEmpty) {
+          _loadPlainTextContent(_existingNote!.content);
+        }
       });
     } catch (_) {
       Navigator.pop(context);
     }
   }
 
+  void _loadPlainTextContent(String text) {
+    final doc = Document()..insert(0, text);
+    _quillController.dispose();
+    _quillController = QuillController(
+      document: doc,
+      selection: const TextSelection.collapsed(offset: 0),
+    );
+    _quillController.addListener(() {
+      if (mounted) setState(() {});
+    });
+  }
+
   @override
   void dispose() {
     _titleController.dispose();
-    _contentController.dispose();
+    _quillController.dispose();
     _categoryController.dispose();
+    _editorScrollController.dispose();
+    _editorFocusNode.dispose();
     super.dispose();
   }
 
   Future<void> _saveNote() async {
     final title = _titleController.text.trim();
-    final content = _contentController.text.trim();
+    final deltaJson = jsonEncode(_quillController.document.toDelta().toJson());
+    final plainText = _quillController.document.toPlainText().trim();
     final category = _categoryController.text.trim().isEmpty
         ? 'General'
         : _categoryController.text.trim();
 
-    if (title.isEmpty && content.isEmpty) {
+    if (title.isEmpty && plainText.isEmpty) {
       Navigator.pop(context);
       return;
     }
@@ -89,14 +138,16 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
     if (_isNewNote) {
       await provider.createNote(
         title: title.isEmpty ? 'Untitled' : title,
-        content: content,
+        content: deltaJson,
+        contentFormat: 'delta',
         category: category,
         color: _selectedColor,
       );
     } else if (_existingNote != null) {
       final updated = _existingNote!.copyWith(
         title: title.isEmpty ? 'Untitled' : title,
-        content: content,
+        content: deltaJson,
+        contentFormat: 'delta',
         category: category,
         color: _selectedColor,
         updatedAt: DateTime.now(),
@@ -105,6 +156,103 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
     }
 
     if (mounted) Navigator.pop(context);
+  }
+
+  Future<void> _insertImage(ImageSource source) async {
+    final imageService = ImageService();
+    final savedPath = await imageService.pickAndSaveImage(source);
+    if (savedPath != null) {
+      final index = _quillController.selection.baseOffset;
+      _quillController.document.insert(index, BlockEmbed.image(savedPath));
+      _quillController.updateSelection(
+        TextSelection.collapsed(offset: index + 1),
+        ChangeSource.local,
+      );
+    }
+  }
+
+  void _showImagePicker() {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: AppColors.surfaceWarm,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => SafeArea(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 40,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AppColors.divider,
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              const SizedBox(height: 16),
+              Text(
+                'Add Image',
+                style: GoogleFonts.quicksand(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textDark,
+                ),
+              ),
+              const SizedBox(height: 16),
+              ListTile(
+                leading: Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: AppColors.leafGreen.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.photo_library_rounded,
+                      color: AppColors.leafGreen),
+                ),
+                title: Text('Gallery',
+                    style: GoogleFonts.quicksand(
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textDark)),
+                subtitle: Text('Pick from your photos',
+                    style: GoogleFonts.quicksand(
+                        fontSize: 12, color: AppColors.textLight)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _insertImage(ImageSource.gallery);
+                },
+              ),
+              ListTile(
+                leading: Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    color: AppColors.teal.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.camera_alt_rounded,
+                      color: AppColors.teal),
+                ),
+                title: Text('Camera',
+                    style: GoogleFonts.quicksand(
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textDark)),
+                subtitle: Text('Take a new photo',
+                    style: GoogleFonts.quicksand(
+                        fontSize: 12, color: AppColors.textLight)),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  _insertImage(ImageSource.camera);
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -122,106 +270,371 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
           children: [
             _buildTopBar(darkerBorder),
             Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Color picker
-                    AppColorPicker(
-                      selectedColor: _selectedColor,
-                      onColorSelected: (color) {
-                        setState(() => _selectedColor = color);
-                      },
-                    ),
-                    const SizedBox(height: 16),
-
-                    // Category selector
-                    _buildCategorySelector(),
-                    const SizedBox(height: 16),
-
-                    // Date display
-                    if (!_isNewNote && _existingNote != null)
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 12),
-                        child: Text(
-                          'Last edited ${DateFormat('MMM d, yyyy \'at\' h:mm a').format(_existingNote!.updatedAt)}',
-                          style: GoogleFonts.quicksand(
-                            fontSize: 12,
-                            color: AppColors.textLight,
-                            fontWeight: FontWeight.w600,
+              child: Column(
+                children: [
+                  // Scrollable content area
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Color picker
+                          AppColorPicker(
+                            selectedColor: _selectedColor,
+                            onColorSelected: (color) {
+                              setState(() => _selectedColor = color);
+                            },
                           ),
-                        ),
-                      ),
+                          const SizedBox(height: 16),
 
-                    // Title field
-                    TextField(
-                      controller: _titleController,
-                      style: GoogleFonts.quicksand(
-                        fontSize: 24,
-                        fontWeight: FontWeight.w700,
-                        color: AppColors.textDark,
-                      ),
-                      decoration: InputDecoration(
-                        hintText: 'Note title...',
-                        hintStyle: GoogleFonts.quicksand(
-                          fontSize: 24,
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.textLight.withValues(alpha: 0.5),
-                        ),
-                        border: InputBorder.none,
-                        enabledBorder: InputBorder.none,
-                        focusedBorder: InputBorder.none,
-                        fillColor: Colors.transparent,
-                        filled: true,
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                      textCapitalization: TextCapitalization.sentences,
-                      maxLines: null,
-                    ),
+                          // Category selector
+                          _buildCategorySelector(),
+                          const SizedBox(height: 16),
 
-                    // Divider
-                    Container(
-                      height: 2,
-                      margin: const EdgeInsets.symmetric(vertical: 8),
-                      decoration: BoxDecoration(
-                        color: darkerBorder.withValues(alpha: 0.3),
-                        borderRadius: BorderRadius.circular(1),
-                      ),
-                    ),
+                          // Date display
+                          if (!_isNewNote && _existingNote != null)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 12),
+                              child: Text(
+                                'Last edited ${DateFormat('MMM d, yyyy \'at\' h:mm a').format(_existingNote!.updatedAt)}',
+                                style: GoogleFonts.quicksand(
+                                  fontSize: 12,
+                                  color: AppColors.textLight,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
 
-                    // Content field
-                    TextField(
-                      controller: _contentController,
-                      style: GoogleFonts.quicksand(
-                        fontSize: 16,
-                        color: AppColors.textMedium,
-                        height: 1.6,
+                          // Title field
+                          TextField(
+                            controller: _titleController,
+                            style: GoogleFonts.quicksand(
+                              fontSize: 24,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textDark,
+                            ),
+                            decoration: InputDecoration(
+                              hintText: 'Note title...',
+                              hintStyle: GoogleFonts.quicksand(
+                                fontSize: 24,
+                                fontWeight: FontWeight.w700,
+                                color:
+                                    AppColors.textLight.withValues(alpha: 0.5),
+                              ),
+                              border: InputBorder.none,
+                              enabledBorder: InputBorder.none,
+                              focusedBorder: InputBorder.none,
+                              fillColor: Colors.transparent,
+                              filled: true,
+                              contentPadding: EdgeInsets.zero,
+                            ),
+                            textCapitalization: TextCapitalization.sentences,
+                            maxLines: null,
+                          ),
+
+                          // Divider
+                          Container(
+                            height: 2,
+                            margin: const EdgeInsets.symmetric(vertical: 8),
+                            decoration: BoxDecoration(
+                              color: darkerBorder.withValues(alpha: 0.3),
+                              borderRadius: BorderRadius.circular(1),
+                            ),
+                          ),
+
+                          // Quill Editor
+                          QuillEditor(
+                            controller: _quillController,
+                            focusNode: _editorFocusNode,
+                            scrollController: _editorScrollController,
+                            config: QuillEditorConfig(
+                              placeholder: 'Start writing...',
+                              padding: EdgeInsets.zero,
+                              autoFocus: false,
+                              expands: false,
+                              customStyles: _buildEditorStyles(),
+                              embedBuilders: [
+                                _NoteImageEmbedBuilder(),
+                              ],
+                            ),
+                          ),
+                          // Extra space at bottom for comfortable editing
+                          const SizedBox(height: 100),
+                        ],
                       ),
-                      decoration: InputDecoration(
-                        hintText: 'Start writing...',
-                        hintStyle: GoogleFonts.quicksand(
-                          fontSize: 16,
-                          color: AppColors.textLight.withValues(alpha: 0.5),
-                        ),
-                        border: InputBorder.none,
-                        enabledBorder: InputBorder.none,
-                        focusedBorder: InputBorder.none,
-                        fillColor: Colors.transparent,
-                        filled: true,
-                        contentPadding: EdgeInsets.zero,
-                      ),
-                      textCapitalization: TextCapitalization.sentences,
-                      maxLines: null,
-                      minLines: 10,
                     ),
-                  ],
-                ),
+                  ),
+
+                  // Formatting toolbar
+                  _buildFormattingToolbar(darkerBorder),
+                ],
               ),
             ),
           ],
         ),
       ),
+    );
+  }
+
+  DefaultStyles _buildEditorStyles() {
+    final baseStyle = GoogleFonts.quicksand(
+      fontSize: 16,
+      color: AppColors.textMedium,
+      height: 1.6,
+    );
+
+    return DefaultStyles(
+      paragraph: DefaultTextBlockStyle(
+        baseStyle,
+        const HorizontalSpacing(0, 0),
+        const VerticalSpacing(4, 4),
+        const VerticalSpacing(0, 0),
+        null,
+      ),
+      h1: DefaultTextBlockStyle(
+        GoogleFonts.quicksand(
+          fontSize: 28,
+          fontWeight: FontWeight.w700,
+          color: AppColors.textDark,
+          height: 1.4,
+        ),
+        const HorizontalSpacing(0, 0),
+        const VerticalSpacing(8, 8),
+        const VerticalSpacing(0, 0),
+        null,
+      ),
+      h2: DefaultTextBlockStyle(
+        GoogleFonts.quicksand(
+          fontSize: 22,
+          fontWeight: FontWeight.w700,
+          color: AppColors.textDark,
+          height: 1.4,
+        ),
+        const HorizontalSpacing(0, 0),
+        const VerticalSpacing(6, 6),
+        const VerticalSpacing(0, 0),
+        null,
+      ),
+      h3: DefaultTextBlockStyle(
+        GoogleFonts.quicksand(
+          fontSize: 18,
+          fontWeight: FontWeight.w700,
+          color: AppColors.textDark,
+          height: 1.4,
+        ),
+        const HorizontalSpacing(0, 0),
+        const VerticalSpacing(4, 4),
+        const VerticalSpacing(0, 0),
+        null,
+      ),
+      bold: GoogleFonts.quicksand(fontWeight: FontWeight.w700),
+      italic: GoogleFonts.quicksand(fontStyle: FontStyle.italic),
+      underline: const TextStyle(decoration: TextDecoration.underline),
+      strikeThrough: const TextStyle(decoration: TextDecoration.lineThrough),
+      placeHolder: DefaultTextBlockStyle(
+        GoogleFonts.quicksand(
+          fontSize: 16,
+          color: AppColors.textLight.withValues(alpha: 0.5),
+          height: 1.6,
+        ),
+        const HorizontalSpacing(0, 0),
+        const VerticalSpacing(0, 0),
+        const VerticalSpacing(0, 0),
+        null,
+      ),
+      lists: DefaultListBlockStyle(
+        baseStyle,
+        const HorizontalSpacing(0, 0),
+        const VerticalSpacing(4, 4),
+        const VerticalSpacing(0, 0),
+        null,
+        null,
+      ),
+    );
+  }
+
+  Widget _buildFormattingToolbar(Color borderColor) {
+    return Container(
+      decoration: BoxDecoration(
+        color: AppColors.getNoteColor(_selectedColor),
+        border: Border(
+          top: BorderSide(
+            color: borderColor.withValues(alpha: 0.3),
+            width: 1.5,
+          ),
+        ),
+      ),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+        child: Row(
+          children: [
+            // Text formatting
+            _buildFormatButton(
+              icon: Icons.format_bold_rounded,
+              attribute: Attribute.bold,
+              tooltip: 'Bold',
+            ),
+            _buildFormatButton(
+              icon: Icons.format_italic_rounded,
+              attribute: Attribute.italic,
+              tooltip: 'Italic',
+            ),
+            _buildFormatButton(
+              icon: Icons.format_underlined_rounded,
+              attribute: Attribute.underline,
+              tooltip: 'Underline',
+            ),
+            _buildFormatButton(
+              icon: Icons.format_strikethrough_rounded,
+              attribute: Attribute.strikeThrough,
+              tooltip: 'Strikethrough',
+            ),
+
+            _buildToolbarDivider(),
+
+            // Headings
+            _buildBlockButton(
+              icon: Icons.title_rounded,
+              attribute: Attribute.h1,
+              tooltip: 'Heading 1',
+            ),
+            _buildBlockButton(
+              icon: Icons.text_fields_rounded,
+              attribute: Attribute.h2,
+              tooltip: 'Heading 2',
+            ),
+
+            _buildToolbarDivider(),
+
+            // Lists
+            _buildBlockButton(
+              icon: Icons.format_list_bulleted_rounded,
+              attribute: Attribute.ul,
+              tooltip: 'Bullet List',
+            ),
+            _buildBlockButton(
+              icon: Icons.format_list_numbered_rounded,
+              attribute: Attribute.ol,
+              tooltip: 'Numbered List',
+            ),
+            _buildBlockButton(
+              icon: Icons.checklist_rounded,
+              attribute: Attribute.unchecked,
+              tooltip: 'Checklist',
+            ),
+
+            _buildToolbarDivider(),
+
+            // Image
+            _buildToolButton(
+              icon: Icons.image_rounded,
+              onTap: _showImagePicker,
+              tooltip: 'Add Image',
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildFormatButton({
+    required IconData icon,
+    required Attribute attribute,
+    String? tooltip,
+  }) {
+    final isActive = _quillController.getSelectionStyle().containsKey(attribute.key);
+    return Tooltip(
+      message: tooltip ?? '',
+      child: GestureDetector(
+        onTap: () {
+          if (isActive) {
+            _quillController.formatSelection(Attribute.clone(attribute, null));
+          } else {
+            _quillController.formatSelection(attribute);
+          }
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          width: 36,
+          height: 36,
+          margin: const EdgeInsets.symmetric(horizontal: 2),
+          decoration: BoxDecoration(
+            color: isActive
+                ? AppColors.leafGreen.withValues(alpha: 0.15)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: isActive
+                  ? AppColors.leafGreen.withValues(alpha: 0.3)
+                  : Colors.transparent,
+              width: 1.5,
+            ),
+          ),
+          child: Icon(
+            icon,
+            size: 20,
+            color: isActive ? AppColors.leafGreen : AppColors.textLight,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildBlockButton({
+    required IconData icon,
+    required Attribute attribute,
+    String? tooltip,
+  }) {
+    final style = _quillController.getSelectionStyle();
+    final isActive = style.containsKey(attribute.key) &&
+        style.attributes[attribute.key]?.value == attribute.value;
+
+    return Tooltip(
+      message: tooltip ?? '',
+      child: GestureDetector(
+        onTap: () {
+          if (isActive) {
+            // Remove the block attribute
+            _quillController.formatSelection(Attribute.clone(attribute, null));
+          } else {
+            _quillController.formatSelection(attribute);
+          }
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          width: 36,
+          height: 36,
+          margin: const EdgeInsets.symmetric(horizontal: 2),
+          decoration: BoxDecoration(
+            color: isActive
+                ? AppColors.leafGreen.withValues(alpha: 0.15)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+              color: isActive
+                  ? AppColors.leafGreen.withValues(alpha: 0.3)
+                  : Colors.transparent,
+              width: 1.5,
+            ),
+          ),
+          child: Icon(
+            icon,
+            size: 20,
+            color: isActive ? AppColors.leafGreen : AppColors.textLight,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildToolbarDivider() {
+    return Container(
+      width: 1.5,
+      height: 24,
+      margin: const EdgeInsets.symmetric(horizontal: 6),
+      color: AppColors.divider,
     );
   }
 
@@ -431,6 +844,58 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
           ),
         ],
       ],
+    );
+  }
+}
+
+/// Custom embed builder for displaying images in the Quill editor.
+class _NoteImageEmbedBuilder extends EmbedBuilder {
+  @override
+  String get key => BlockEmbed.imageType;
+
+  @override
+  Widget build(BuildContext context, EmbedContext embedContext) {
+    final imageUrl = embedContext.node.value.data as String;
+
+    Widget imageWidget;
+    if (imageUrl.startsWith('/') || imageUrl.startsWith('file://')) {
+      // Local file
+      imageWidget = Image.file(
+        File(imageUrl.replaceFirst('file://', '')),
+        fit: BoxFit.cover,
+        width: double.infinity,
+        errorBuilder: (ctx, error, stack) => Container(
+          height: 100,
+          color: AppColors.divider.withValues(alpha: 0.3),
+          child: const Center(
+            child: Icon(Icons.broken_image_rounded,
+                color: AppColors.textLight, size: 32),
+          ),
+        ),
+      );
+    } else {
+      // Network URL fallback
+      imageWidget = Image.network(
+        imageUrl,
+        fit: BoxFit.cover,
+        width: double.infinity,
+        errorBuilder: (ctx, error, stack) => Container(
+          height: 100,
+          color: AppColors.divider.withValues(alpha: 0.3),
+          child: const Center(
+            child: Icon(Icons.broken_image_rounded,
+                color: AppColors.textLight, size: 32),
+          ),
+        ),
+      );
+    }
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(12),
+        child: imageWidget,
+      ),
     );
   }
 }

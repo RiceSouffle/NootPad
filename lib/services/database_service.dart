@@ -21,13 +21,14 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 1,
+      version: 2,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE notes (
             id TEXT PRIMARY KEY,
             title TEXT NOT NULL,
             content TEXT DEFAULT '',
+            contentFormat TEXT DEFAULT 'delta',
             category TEXT DEFAULT 'General',
             color TEXT DEFAULT 'cream',
             isPinned INTEGER DEFAULT 0,
@@ -35,6 +36,13 @@ class DatabaseService {
             updatedAt TEXT NOT NULL
           )
         ''');
+      },
+      onUpgrade: (db, oldVersion, newVersion) async {
+        if (oldVersion < 2) {
+          await db.execute(
+            "ALTER TABLE notes ADD COLUMN contentFormat TEXT DEFAULT 'plain'",
+          );
+        }
       },
     );
   }

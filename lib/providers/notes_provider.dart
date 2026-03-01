@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:flutter_quill/flutter_quill.dart';
 import 'package:uuid/uuid.dart';
 import '../models/note.dart';
 import '../services/database_service.dart';
@@ -41,9 +43,24 @@ class NotesProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Extract plain text from a note's content (handles both formats).
+  static String getPlainText(Note note) {
+    if (!note.isDelta || note.content.isEmpty) {
+      return note.content;
+    }
+    try {
+      final json = jsonDecode(note.content) as List;
+      final doc = Document.fromJson(json);
+      return doc.toPlainText().trim();
+    } catch (_) {
+      return note.content;
+    }
+  }
+
   Future<Note> createNote({
     String title = '',
     String content = '',
+    String contentFormat = 'delta',
     String category = 'General',
     String color = 'cream',
   }) async {
@@ -52,6 +69,7 @@ class NotesProvider extends ChangeNotifier {
       id: _uuid.v4(),
       title: title,
       content: content,
+      contentFormat: contentFormat,
       category: category,
       color: color,
       createdAt: now,
@@ -117,9 +135,12 @@ class NotesProvider extends ChangeNotifier {
 
   void _applyFilters() {
     _filteredNotes = _notes.where((note) {
+      final searchText = note.isDelta
+          ? getPlainText(note).toLowerCase()
+          : note.content.toLowerCase();
       final matchesSearch = _searchQuery.isEmpty ||
           note.title.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-          note.content.toLowerCase().contains(_searchQuery.toLowerCase());
+          searchText.contains(_searchQuery.toLowerCase());
       final matchesCategory =
           _selectedCategory == 'All' || note.category == _selectedCategory;
       return matchesSearch && matchesCategory;
