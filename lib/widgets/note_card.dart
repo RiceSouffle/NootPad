@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
@@ -60,6 +61,7 @@ class NoteCard extends StatelessWidget {
 
     // Build content preview once (avoids double-parsing Delta)
     final contentPreview = _buildContentPreview(context);
+    final imageUrls = _extractImageUrls();
 
     return GestureDetector(
       onTap: onTap,
@@ -83,68 +85,82 @@ class NoteCard extends StatelessWidget {
             ),
           ],
         ),
-        child: Padding(
-          padding: const EdgeInsets.all(14),
+        child: ClipRRect(
+          // Clip inside the border so images get rounded corners
+          borderRadius: BorderRadius.circular(14),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Pin indicator & category
-              Row(
-                children: [
-                  if (note.isPinned)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 4),
-                      child: Icon(
-                        Icons.push_pin_rounded,
-                        size: 14,
-                        color: AppColors.warmBrown.withValues(alpha: 0.7),
-                      ),
+              // Image preview at top (Google Keep style)
+              if (imageUrls.isNotEmpty) _buildImagePreview(imageUrls),
+
+              // Padded text content
+              Padding(
+                padding: const EdgeInsets.all(14),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // Pin indicator & category
+                    Row(
+                      children: [
+                        if (note.isPinned)
+                          Padding(
+                            padding: const EdgeInsets.only(right: 4),
+                            child: Icon(
+                              Icons.push_pin_rounded,
+                              size: 14,
+                              color:
+                                  AppColors.warmBrown.withValues(alpha: 0.7),
+                            ),
+                          ),
+                        Expanded(
+                          child: Text(
+                            note.category,
+                            style: GoogleFonts.quicksand(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textLight,
+                              letterSpacing: 0.5,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                      ],
                     ),
-                  Expanded(
-                    child: Text(
-                      note.category,
+                    const SizedBox(height: 6),
+
+                    // Title
+                    Text(
+                      note.title.isEmpty ? 'Untitled' : note.title,
                       style: GoogleFonts.quicksand(
-                        fontSize: 11,
+                        fontSize: 16,
                         fontWeight: FontWeight.w700,
-                        color: AppColors.textLight,
-                        letterSpacing: 0.5,
+                        color: note.title.isEmpty
+                            ? AppColors.textLight
+                            : AppColors.textDark,
+                        height: 1.2,
                       ),
+                      maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 6),
 
-              // Title
-              Text(
-                note.title.isEmpty ? 'Untitled' : note.title,
-                style: GoogleFonts.quicksand(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
-                  color: note.title.isEmpty
-                      ? AppColors.textLight
-                      : AppColors.textDark,
-                  height: 1.2,
-                ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
+                    if (contentPreview != null) ...[
+                      const SizedBox(height: 6),
+                      contentPreview,
+                    ],
 
-              if (contentPreview != null) ...[
-                const SizedBox(height: 6),
-                contentPreview,
-              ],
+                    const SizedBox(height: 8),
 
-              const SizedBox(height: 8),
-
-              // Date
-              Text(
-                _formatDate(note.updatedAt),
-                style: GoogleFonts.quicksand(
-                  fontSize: 11,
-                  color: AppColors.textLight,
-                  fontWeight: FontWeight.w600,
+                    // Date
+                    Text(
+                      _formatDate(note.updatedAt),
+                      style: GoogleFonts.quicksand(
+                        fontSize: 11,
+                        color: AppColors.textLight,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
@@ -153,6 +169,140 @@ class NoteCard extends StatelessWidget {
       ),
     );
   }
+
+  // ---------------------------------------------------------------------------
+  // Image preview
+  // ---------------------------------------------------------------------------
+
+  /// Extract image URLs/paths from the Delta JSON content.
+  List<String> _extractImageUrls() {
+    if (!note.isDelta || note.content.isEmpty) return [];
+    try {
+      final ops = jsonDecode(note.content) as List;
+      final images = <String>[];
+      for (final op in ops) {
+        final insert = (op as Map<String, dynamic>)['insert'];
+        if (insert is Map) {
+          final image = insert['image'];
+          if (image is String && image.isNotEmpty) {
+            images.add(image);
+          }
+        }
+      }
+      return images;
+    } catch (_) {
+      return [];
+    }
+  }
+
+  /// Build the image preview shown at the top of the card.
+  /// Stacks images vertically like Google Keep.
+  Widget _buildImagePreview(List<String> imageUrls) {
+    // Show up to 3 images stacked; scale height based on count
+    final maxVisible = 3;
+    final visible = imageUrls.take(maxVisible).toList();
+    final remaining = imageUrls.length - maxVisible;
+
+    // Adjust per-image height: 1→120, 2→85 each, 3+→65 each
+    final double imageHeight;
+    if (visible.length == 1) {
+      imageHeight = 120;
+    } else if (visible.length == 2) {
+      imageHeight = 85;
+    } else {
+      imageHeight = 65;
+    }
+
+    return Column(
+      children: [
+        for (int i = 0; i < visible.length; i++) ...[
+          // Add a tiny gap between stacked images
+          if (i > 0)
+            Container(
+              height: 1.5,
+              color: AppColors.getNoteColor(note.color),
+            ),
+          // Last visible image may have a "+N" badge
+          if (i == visible.length - 1 && remaining > 0)
+            Stack(
+              children: [
+                SizedBox(
+                  width: double.infinity,
+                  height: imageHeight,
+                  child: _buildImage(visible[i]),
+                ),
+                Positioned(
+                  right: 6,
+                  bottom: 6,
+                  child: Container(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withValues(alpha: 0.55),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        const Icon(Icons.image_rounded,
+                            color: Colors.white, size: 12),
+                        const SizedBox(width: 3),
+                        Text(
+                          '+$remaining',
+                          style: GoogleFonts.quicksand(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w700,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            )
+          else
+            SizedBox(
+              width: double.infinity,
+              height: imageHeight,
+              child: _buildImage(visible[i]),
+            ),
+        ],
+      ],
+    );
+  }
+
+  /// Render a single image from a local path or network URL.
+  Widget _buildImage(String imageUrl) {
+    if (imageUrl.startsWith('/') || imageUrl.startsWith('file://')) {
+      return Image.file(
+        File(imageUrl.replaceFirst('file://', '')),
+        fit: BoxFit.cover,
+        width: double.infinity,
+        errorBuilder: (ctx, error, stack) => _buildImagePlaceholder(),
+      );
+    }
+    return Image.network(
+      imageUrl,
+      fit: BoxFit.cover,
+      width: double.infinity,
+      errorBuilder: (ctx, error, stack) => _buildImagePlaceholder(),
+    );
+  }
+
+  /// Placeholder shown when an image fails to load.
+  Widget _buildImagePlaceholder() {
+    return Container(
+      color: AppColors.divider.withValues(alpha: 0.3),
+      child: const Center(
+        child: Icon(Icons.image_rounded, color: AppColors.textLight, size: 32),
+      ),
+    );
+  }
+
+  // ---------------------------------------------------------------------------
+  // Content preview (text, checklists, rich text)
+  // ---------------------------------------------------------------------------
 
   /// Builds the content preview area of the card.
   /// Returns null if there is no content to display.
@@ -318,7 +468,7 @@ class NoteCard extends StatelessWidget {
     // Add list prefix
     if (line.isBulletList) {
       spans.add(TextSpan(
-        text: '• ',
+        text: '\u2022 ',
         style: baseStyle.copyWith(color: AppColors.textLight),
       ));
     } else if (line.isOrderedList && orderedIndex > 0) {
@@ -370,6 +520,10 @@ class NoteCard extends StatelessWidget {
     );
   }
 
+  // ---------------------------------------------------------------------------
+  // Delta parsing
+  // ---------------------------------------------------------------------------
+
   /// Parse the Delta JSON into structured lines with segments and block attributes.
   List<_DeltaLine> _parseDeltaLines() {
     if (!note.isDelta || note.content.isEmpty) return [];
@@ -413,7 +567,7 @@ class NoteCard extends StatelessWidget {
             currentSegments.add(_TextSegment(text: insert, attrs: attrs));
           }
         }
-        // Skip embed ops (images) for card preview
+        // Embeds (images) are handled separately via _extractImageUrls
       }
 
       // Add any trailing segments without a newline
@@ -429,6 +583,10 @@ class NoteCard extends StatelessWidget {
       return [];
     }
   }
+
+  // ---------------------------------------------------------------------------
+  // Helpers
+  // ---------------------------------------------------------------------------
 
   String _formatDate(DateTime date) {
     final now = DateTime.now();
