@@ -50,10 +50,7 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
     _editorScrollController = ScrollController();
     _editorFocusNode = FocusNode();
 
-    // Rebuild toolbar when selection/formatting changes
-    _quillController.addListener(() {
-      if (mounted) setState(() {});
-    });
+    _attachQuillListener();
 
     if (widget.noteId != null) {
       _isNewNote = false;
@@ -61,6 +58,13 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
         _loadNote();
       });
     }
+  }
+
+  /// Rebuild toolbar when selection/formatting changes.
+  void _attachQuillListener() {
+    _quillController.addListener(() {
+      if (mounted) setState(() {});
+    });
   }
 
   void _loadNote() {
@@ -82,9 +86,7 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
               document: doc,
               selection: const TextSelection.collapsed(offset: 0),
             );
-            _quillController.addListener(() {
-              if (mounted) setState(() {});
-            });
+            _attachQuillListener();
           } catch (_) {
             // Fallback: treat as plain text
             _loadPlainTextContent(_existingNote!.content);
@@ -105,9 +107,7 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
       document: doc,
       selection: const TextSelection.collapsed(offset: 0),
     );
-    _quillController.addListener(() {
-      if (mounted) setState(() {});
-    });
+    _attachQuillListener();
   }
 
   @override
@@ -276,8 +276,6 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
                   Expanded(
                     child: Scrollbar(
                       thumbVisibility: true,
-                      radius: const Radius.circular(6),
-                      thickness: 4,
                       child: SingleChildScrollView(
                         padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
                       child: Column(
@@ -495,25 +493,29 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
             tooltip: 'Strikethrough',
           ),
           _buildToolbarDivider(),
-          _buildBlockButton(
+          _buildFormatButton(
             icon: Icons.title_rounded,
             attribute: Attribute.h1,
             tooltip: 'Heading',
+            isBlockLevel: true,
           ),
-          _buildBlockButton(
+          _buildFormatButton(
             icon: Icons.format_list_bulleted_rounded,
             attribute: Attribute.ul,
             tooltip: 'Bullets',
+            isBlockLevel: true,
           ),
-          _buildBlockButton(
+          _buildFormatButton(
             icon: Icons.format_list_numbered_rounded,
             attribute: Attribute.ol,
             tooltip: 'Numbered',
+            isBlockLevel: true,
           ),
-          _buildBlockButton(
+          _buildFormatButton(
             icon: Icons.checklist_rounded,
             attribute: Attribute.unchecked,
             tooltip: 'Checklist',
+            isBlockLevel: true,
           ),
           // Image button (teal circle, visually distinct)
           Tooltip(
@@ -544,59 +546,19 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
     required IconData icon,
     required Attribute attribute,
     String? tooltip,
-  }) {
-    final isActive = _quillController.getSelectionStyle().containsKey(attribute.key);
-    return Tooltip(
-      message: tooltip ?? '',
-      child: GestureDetector(
-        onTap: () {
-          if (isActive) {
-            _quillController.formatSelection(Attribute.clone(attribute, null));
-          } else {
-            _quillController.formatSelection(attribute);
-          }
-        },
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          width: 30,
-          height: 30,
-          decoration: BoxDecoration(
-            color: isActive
-                ? AppColors.leafGreen.withValues(alpha: 0.15)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(10),
-            border: Border.all(
-              color: isActive
-                  ? AppColors.leafGreen.withValues(alpha: 0.3)
-                  : Colors.transparent,
-              width: 1.5,
-            ),
-          ),
-          child: Icon(
-            icon,
-            size: 20,
-            color: isActive ? AppColors.leafGreen : AppColors.textLight,
-          ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildBlockButton({
-    required IconData icon,
-    required Attribute attribute,
-    String? tooltip,
+    bool isBlockLevel = false,
   }) {
     final style = _quillController.getSelectionStyle();
-    final isActive = style.containsKey(attribute.key) &&
-        style.attributes[attribute.key]?.value == attribute.value;
+    final isActive = isBlockLevel
+        ? style.containsKey(attribute.key) &&
+            style.attributes[attribute.key]?.value == attribute.value
+        : style.containsKey(attribute.key);
 
     return Tooltip(
       message: tooltip ?? '',
       child: GestureDetector(
         onTap: () {
           if (isActive) {
-            // Remove the block attribute
             _quillController.formatSelection(Attribute.clone(attribute, null));
           } else {
             _quillController.formatSelection(attribute);
@@ -856,38 +818,21 @@ class _NoteImageEmbedBuilder extends EmbedBuilder {
   Widget build(BuildContext context, EmbedContext embedContext) {
     final imageUrl = embedContext.node.value.data as String;
 
-    Widget imageWidget;
-    if (imageUrl.startsWith('/') || imageUrl.startsWith('file://')) {
-      // Local file
-      imageWidget = Image.file(
-        File(imageUrl.replaceFirst('file://', '')),
-        fit: BoxFit.cover,
-        width: double.infinity,
-        errorBuilder: (ctx, error, stack) => Container(
-          height: 100,
-          color: AppColors.divider.withValues(alpha: 0.3),
-          child: const Center(
-            child: Icon(Icons.broken_image_rounded,
-                color: AppColors.textLight, size: 32),
-          ),
-        ),
-      );
-    } else {
-      // Network URL fallback
-      imageWidget = Image.network(
-        imageUrl,
-        fit: BoxFit.cover,
-        width: double.infinity,
-        errorBuilder: (ctx, error, stack) => Container(
-          height: 100,
-          color: AppColors.divider.withValues(alpha: 0.3),
-          child: const Center(
-            child: Icon(Icons.broken_image_rounded,
-                color: AppColors.textLight, size: 32),
-          ),
-        ),
-      );
-    }
+    final isLocal =
+        imageUrl.startsWith('/') || imageUrl.startsWith('file://');
+    final imageWidget = isLocal
+        ? Image.file(
+            File(imageUrl.replaceFirst('file://', '')),
+            fit: BoxFit.cover,
+            width: double.infinity,
+            errorBuilder: (context, error, stack) => _buildErrorPlaceholder(),
+          )
+        : Image.network(
+            imageUrl,
+            fit: BoxFit.cover,
+            width: double.infinity,
+            errorBuilder: (context, error, stack) => _buildErrorPlaceholder(),
+          );
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
@@ -897,4 +842,13 @@ class _NoteImageEmbedBuilder extends EmbedBuilder {
       ),
     );
   }
+
+  Widget _buildErrorPlaceholder() => Container(
+        height: 100,
+        color: AppColors.divider.withValues(alpha: 0.3),
+        child: const Center(
+          child: Icon(Icons.broken_image_rounded,
+              color: AppColors.textLight, size: 32),
+        ),
+      );
 }

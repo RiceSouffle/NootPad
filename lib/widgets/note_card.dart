@@ -199,7 +199,7 @@ class NoteCard extends StatelessWidget {
   /// Stacks images vertically like Google Keep.
   Widget _buildImagePreview(List<String> imageUrls) {
     // Show up to 3 images stacked; scale height based on count
-    final maxVisible = 3;
+    const maxVisible = 3;
     final visible = imageUrls.take(maxVisible).toList();
     final remaining = imageUrls.length - maxVisible;
 
@@ -485,7 +485,7 @@ class NoteCard extends StatelessWidget {
       if (seg.attrs != null) {
         FontWeight? weight;
         FontStyle? fontStyle;
-        TextDecoration? decoration;
+        final decorations = <TextDecoration>[];
 
         if (seg.attrs!['bold'] == true) {
           weight = FontWeight.w700;
@@ -494,16 +494,18 @@ class NoteCard extends StatelessWidget {
           fontStyle = FontStyle.italic;
         }
         if (seg.attrs!['underline'] == true) {
-          decoration = TextDecoration.underline;
+          decorations.add(TextDecoration.underline);
         }
         if (seg.attrs!['strike'] == true) {
-          decoration = TextDecoration.lineThrough;
+          decorations.add(TextDecoration.lineThrough);
         }
 
         segStyle = segStyle.copyWith(
           fontWeight: weight ?? segStyle.fontWeight,
           fontStyle: fontStyle,
-          decoration: decoration,
+          decoration: decorations.isEmpty
+              ? null
+              : TextDecoration.combine(decorations),
         );
       }
 

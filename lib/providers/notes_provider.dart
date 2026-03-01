@@ -30,7 +30,6 @@ class NotesProvider extends ChangeNotifier {
   }
 
   int get totalNotes => _notes.length;
-  int get pinnedCount => _notes.where((n) => n.isPinned).length;
 
   Future<void> loadNotes() async {
     _isLoading = true;
@@ -178,13 +177,14 @@ class NotesProvider extends ChangeNotifier {
   }
 
   void _applyFilters() {
+    final query = _searchQuery.toLowerCase();
     _filteredNotes = _notes.where((note) {
-      final searchText = note.isDelta
-          ? getPlainText(note).toLowerCase()
-          : note.content.toLowerCase();
-      final matchesSearch = _searchQuery.isEmpty ||
-          note.title.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-          searchText.contains(_searchQuery.toLowerCase());
+      final matchesSearch = query.isEmpty ||
+          note.title.toLowerCase().contains(query) ||
+          (note.isDelta
+                  ? getPlainText(note).toLowerCase()
+                  : note.content.toLowerCase())
+              .contains(query);
       final matchesCategory =
           _selectedCategory == 'All' || note.category == _selectedCategory;
       return matchesSearch && matchesCategory;

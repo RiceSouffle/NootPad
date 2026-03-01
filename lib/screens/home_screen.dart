@@ -17,7 +17,7 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
+class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
   late AnimationController _fabController;
   late Animation<double> _fabScale;
 
@@ -367,8 +367,6 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
 
         return Scrollbar(
           thumbVisibility: true,
-          radius: const Radius.circular(6),
-          thickness: 4,
           child: MasonryGridView.count(
             crossAxisCount: 2,
             mainAxisSpacing: 12,
