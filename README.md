@@ -1,12 +1,14 @@
-# NootPad
+# NootPad (previously Chinta Ultimate)
 
 A cozy, pastel-themed note-taking app built with Flutter. Warm sandy tones, soft colors, and rounded UI elements make jotting down thoughts feel delightful.
 
 ## Screenshots
-
-<!-- Add screenshots here -->
-<!-- ![Home Screen](screenshots/home.png) -->
-<!-- ![Edit Note](screenshots/edit.png) -->
+![alt text](image.png)
+![alt text](image-1.png)
+![alt text](image-2.png)
+![alt text](image-3.png)
+![alt text](image-4.png)
+![alt text](image-5.png)
 
 ## Features
 
@@ -33,7 +35,7 @@ A cozy, pastel-themed note-taking app built with Flutter. Warm sandy tones, soft
 
 ```bash
 # Clone the repo
-git clone https://github.com/yourusername/nootpad.git
+git clone https://github.com/RiceSouffle/nootpad.git
 cd nootpad
 
 # Install dependencies
