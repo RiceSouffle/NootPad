@@ -365,13 +365,16 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           return _buildEmptyState(provider.searchQuery.isNotEmpty);
         }
 
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+        return Scrollbar(
+          thumbVisibility: true,
+          radius: const Radius.circular(6),
+          thickness: 4,
           child: MasonryGridView.count(
             crossAxisCount: 2,
             mainAxisSpacing: 12,
             crossAxisSpacing: 12,
-            padding: const EdgeInsets.only(top: 4, bottom: 80),
+            padding: const EdgeInsets.only(
+                left: 16, right: 16, top: 4, bottom: 80),
             itemCount: provider.notes.length,
             itemBuilder: (context, index) {
               final note = provider.notes[index];

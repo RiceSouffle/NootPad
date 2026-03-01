@@ -274,8 +274,12 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
                 children: [
                   // Scrollable content area
                   Expanded(
-                    child: SingleChildScrollView(
-                      padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+                    child: Scrollbar(
+                      thumbVisibility: true,
+                      radius: const Radius.circular(6),
+                      thickness: 4,
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -363,6 +367,7 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
                           const SizedBox(height: 100),
                         ],
                       ),
+                    ),
                     ),
                   ),
 

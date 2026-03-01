@@ -36,6 +36,7 @@ class AppColors {
   static const Color pastelMint = Color(0xFFD4F0E8);
 
   // UI elements
+  static const Color scrollbar = Color(0xFFC4A87A);
   static const Color divider = Color(0xFFE0D0B8);
   static const Color shadow = Color(0x25000000);
   static const Color iconBg = Color(0xFFF0E4D0);
@@ -150,6 +151,13 @@ class AppTheme {
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(16),
         ),
+      ),
+      scrollbarTheme: const ScrollbarThemeData(
+        thumbColor: WidgetStatePropertyAll(AppColors.scrollbar),
+        trackColor: WidgetStatePropertyAll(Colors.transparent),
+        trackBorderColor: WidgetStatePropertyAll(Colors.transparent),
+        radius: Radius.circular(6),
+        thickness: WidgetStatePropertyAll(4),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
