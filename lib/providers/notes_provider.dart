@@ -42,16 +42,31 @@ class NotesProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Validate that a decoded JSON value is a well-formed Delta ops array.
+  static bool isValidDelta(dynamic json) {
+    if (json is! List) return false;
+    for (final op in json) {
+      if (op is! Map<String, dynamic>) return false;
+      if (!op.containsKey('insert')) return false;
+    }
+    return true;
+  }
+
   /// Extract plain text from a note's content (handles both formats).
   static String getPlainText(Note note) {
     if (!note.isDelta || note.content.isEmpty) {
       return note.content;
     }
     try {
-      final json = jsonDecode(note.content) as List;
-      final doc = Document.fromJson(json);
+      final json = jsonDecode(note.content);
+      if (!isValidDelta(json)) return note.content;
+      final doc = Document.fromJson(json as List);
       return doc.toPlainText().trim();
-    } catch (_) {
+    } on FormatException catch (e) {
+      debugPrint('Invalid Delta JSON in getPlainText: $e');
+      return note.content;
+    } catch (e) {
+      debugPrint('Error parsing Delta in getPlainText: $e');
       return note.content;
     }
   }
@@ -130,13 +145,21 @@ class NotesProvider extends ChangeNotifier {
     if (!note.isDelta || note.content.isEmpty) return;
 
     try {
-      final ops = List<dynamic>.from(jsonDecode(note.content) as List);
+      final decoded = jsonDecode(note.content);
+      if (!isValidDelta(decoded)) return;
+
+      final ops = List<dynamic>.from(decoded as List);
       if (opIndex < 0 || opIndex >= ops.length) return;
 
-      final op =
-          Map<String, dynamic>.from(ops[opIndex] as Map<String, dynamic>);
-      final attrs = Map<String, dynamic>.from(
-          op['attributes'] as Map<String, dynamic>? ?? {});
+      final rawOp = ops[opIndex];
+      if (rawOp is! Map<String, dynamic>) return;
+
+      final op = Map<String, dynamic>.from(rawOp);
+      final rawAttrs = op['attributes'];
+      if (rawAttrs != null && rawAttrs is! Map<String, dynamic>) return;
+
+      final attrs =
+          Map<String, dynamic>.from(rawAttrs as Map<String, dynamic>? ?? {});
 
       if (attrs['list'] == 'checked') {
         attrs['list'] = 'unchecked';
@@ -159,8 +182,10 @@ class NotesProvider extends ChangeNotifier {
       _notes[index] = updated;
       _applyFilters();
       notifyListeners();
-    } catch (_) {
-      // Failed to toggle checklist item, silently ignore
+    } on FormatException catch (e) {
+      debugPrint('Invalid JSON in checklist toggle: $e');
+    } catch (e) {
+      debugPrint('Error toggling checklist item: $e');
     }
   }
 

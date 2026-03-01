@@ -39,16 +39,27 @@ class Note {
 
   factory Note.fromMap(Map<String, dynamic> map) {
     return Note(
-      id: map['id'] as String,
-      title: map['title'] as String,
-      content: map['content'] as String? ?? '',
-      contentFormat: map['contentFormat'] as String? ?? 'plain',
-      category: map['category'] as String? ?? 'General',
-      color: map['color'] as String? ?? 'cream',
+      id: (map['id'] as String?) ?? '',
+      title: (map['title'] as String?) ?? '',
+      content: (map['content'] as String?) ?? '',
+      contentFormat: (map['contentFormat'] as String?) ?? 'plain',
+      category: (map['category'] as String?) ?? 'General',
+      color: (map['color'] as String?) ?? 'cream',
       isPinned: (map['isPinned'] as int? ?? 0) == 1,
-      createdAt: DateTime.parse(map['createdAt'] as String),
-      updatedAt: DateTime.parse(map['updatedAt'] as String),
+      createdAt: _parseDateSafe(map['createdAt']),
+      updatedAt: _parseDateSafe(map['updatedAt']),
     );
+  }
+
+  static DateTime _parseDateSafe(dynamic value) {
+    if (value is String) {
+      try {
+        return DateTime.parse(value);
+      } catch (_) {
+        // Corrupted date string — fall back to now
+      }
+    }
+    return DateTime.now();
   }
 
   Note copyWith({

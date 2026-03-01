@@ -22,6 +22,9 @@ class EditNoteScreen extends StatefulWidget {
 }
 
 class _EditNoteScreenState extends State<EditNoteScreen> {
+  static const _maxTitleLength = 500;
+  static const _maxCategoryLength = 50;
+
   late TextEditingController _titleController;
   late QuillController _quillController;
   late TextEditingController _categoryController;
@@ -31,6 +34,14 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
   bool _isNewNote = true;
   Note? _existingNote;
   bool _showCategoryField = false;
+
+  /// Strip dangerous Unicode characters (bidi overrides, zero-width).
+  static String _sanitize(String input) {
+    return input
+        .replaceAll(RegExp(r'[\u202A-\u202E\u2066-\u2069]'), '')
+        .replaceAll(RegExp(r'[\u200B-\u200D\uFEFF]'), '')
+        .trim();
+  }
 
   final List<String> _defaultCategories = [
     'General',
@@ -87,15 +98,19 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
               selection: const TextSelection.collapsed(offset: 0),
             );
             _attachQuillListener();
-          } catch (_) {
-            // Fallback: treat as plain text
+          } on FormatException catch (e) {
+            debugPrint('Invalid Delta JSON: $e');
+            _loadPlainTextContent(_existingNote!.content);
+          } catch (e) {
+            debugPrint('Error loading Delta content: $e');
             _loadPlainTextContent(_existingNote!.content);
           }
         } else if (_existingNote!.content.isNotEmpty) {
           _loadPlainTextContent(_existingNote!.content);
         }
       });
-    } catch (_) {
+    } catch (e) {
+      debugPrint('Failed to load note: $e');
       Navigator.pop(context);
     }
   }
@@ -121,12 +136,17 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
   }
 
   Future<void> _saveNote() async {
-    final title = _titleController.text.trim();
+    var title = _sanitize(_titleController.text);
+    if (title.length > _maxTitleLength) {
+      title = title.substring(0, _maxTitleLength);
+    }
     final deltaJson = jsonEncode(_quillController.document.toDelta().toJson());
     final plainText = _quillController.document.toPlainText().trim();
-    final category = _categoryController.text.trim().isEmpty
-        ? 'General'
-        : _categoryController.text.trim();
+    var category = _sanitize(_categoryController.text);
+    if (category.isEmpty) category = 'General';
+    if (category.length > _maxCategoryLength) {
+      category = category.substring(0, _maxCategoryLength);
+    }
 
     if (title.isEmpty && plainText.isEmpty) {
       Navigator.pop(context);
@@ -820,6 +840,15 @@ class _NoteImageEmbedBuilder extends EmbedBuilder {
 
     final isLocal =
         imageUrl.startsWith('/') || imageUrl.startsWith('file://');
+
+    // Reject local paths with traversal attempts
+    if (isLocal && !ImageService.isSafeLocalPath(imageUrl)) {
+      return Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: _buildErrorPlaceholder(),
+      );
+    }
+
     final imageWidget = isLocal
         ? Image.file(
             File(imageUrl.replaceFirst('file://', '')),

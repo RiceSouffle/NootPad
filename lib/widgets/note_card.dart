@@ -6,6 +6,7 @@ import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../models/note.dart';
 import '../providers/notes_provider.dart';
+import '../services/image_service.dart';
 import '../theme/app_theme.dart';
 
 /// A text segment with optional inline formatting attributes.
@@ -178,10 +179,12 @@ class NoteCard extends StatelessWidget {
   List<String> _extractImageUrls() {
     if (!note.isDelta || note.content.isEmpty) return [];
     try {
-      final ops = jsonDecode(note.content) as List;
+      final decoded = jsonDecode(note.content);
+      if (decoded is! List) return [];
       final images = <String>[];
-      for (final op in ops) {
-        final insert = (op as Map<String, dynamic>)['insert'];
+      for (final op in decoded) {
+        if (op is! Map<String, dynamic>) continue;
+        final insert = op['insert'];
         if (insert is Map) {
           final image = insert['image'];
           if (image is String && image.isNotEmpty) {
@@ -190,7 +193,10 @@ class NoteCard extends StatelessWidget {
         }
       }
       return images;
-    } catch (_) {
+    } on FormatException {
+      return [];
+    } catch (e) {
+      debugPrint('Error extracting image URLs: $e');
       return [];
     }
   }
@@ -275,6 +281,10 @@ class NoteCard extends StatelessWidget {
   /// Render a single image from a local path or network URL.
   Widget _buildImage(String imageUrl) {
     if (imageUrl.startsWith('/') || imageUrl.startsWith('file://')) {
+      // Reject paths with traversal attempts
+      if (!ImageService.isSafeLocalPath(imageUrl)) {
+        return _buildImagePlaceholder();
+      }
       return Image.file(
         File(imageUrl.replaceFirst('file://', '')),
         fit: BoxFit.cover,
@@ -531,14 +541,17 @@ class NoteCard extends StatelessWidget {
     if (!note.isDelta || note.content.isEmpty) return [];
 
     try {
-      final ops = jsonDecode(note.content) as List;
+      final decoded = jsonDecode(note.content);
+      if (decoded is! List) return [];
       final lines = <_DeltaLine>[];
       var currentSegments = <_TextSegment>[];
 
-      for (int i = 0; i < ops.length; i++) {
-        final op = ops[i] as Map<String, dynamic>;
-        final insert = op['insert'];
-        final attrs = op['attributes'] as Map<String, dynamic>?;
+      for (int i = 0; i < decoded.length; i++) {
+        final rawOp = decoded[i];
+        if (rawOp is! Map<String, dynamic>) continue;
+        final insert = rawOp['insert'];
+        final rawAttrs = rawOp['attributes'];
+        final attrs = (rawAttrs is Map<String, dynamic>) ? rawAttrs : null;
 
         if (insert is String) {
           if (insert == '\n') {
@@ -581,7 +594,10 @@ class NoteCard extends StatelessWidget {
       }
 
       return lines;
-    } catch (_) {
+    } on FormatException {
+      return [];
+    } catch (e) {
+      debugPrint('Error parsing Delta lines: $e');
       return [];
     }
   }
