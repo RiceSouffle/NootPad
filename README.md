@@ -1,3 +1,0 @@
-# chintaultimate
- 
-for future development
