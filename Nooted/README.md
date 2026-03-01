@@ -1,4 +1,4 @@
-# Chinta Ultimate
+# NootPad
 
 A cozy note-taking app for phones built with Flutter, featuring a warm sandy aesthetic with pastel colors and rounded UI elements.
 

@@ -259,7 +259,7 @@ class _HomeScreenState extends State<HomeScreen> with TickerProviderStateMixin {
           const SizedBox(width: 10),
           Expanded(
             child: Text(
-              'Chinta Ultimate',
+              'NootPad',
               style: GoogleFonts.quicksand(
                 fontSize: 24,
                 fontWeight: FontWeight.w700,

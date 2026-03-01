@@ -1,4 +1,4 @@
-package com.sef.chintaultimate
+package com.sef.nootpad
 
 import io.flutter.embedding.android.FlutterActivity
 

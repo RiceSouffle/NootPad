@@ -15,18 +15,18 @@ void main() {
     systemNavigationBarIconBrightness: Brightness.dark,
   ));
 
-  runApp(const ChintaUltimateApp());
+  runApp(const NootPadApp());
 }
 
-class ChintaUltimateApp extends StatelessWidget {
-  const ChintaUltimateApp({super.key});
+class NootPadApp extends StatelessWidget {
+  const NootPadApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
       create: (_) => NotesProvider(),
       child: MaterialApp(
-        title: 'Chinta Ultimate',
+        title: 'NootPad',
         theme: AppTheme.theme,
         debugShowCheckedModeBanner: false,
         home: const HomeScreen(),

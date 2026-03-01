@@ -17,7 +17,7 @@ class DatabaseService {
 
   Future<Database> _initDatabase() async {
     final dbPath = await getDatabasesPath();
-    final path = join(dbPath, 'chinta_ultimate.db');
+    final path = join(dbPath, 'nootpad.db');
 
     return await openDatabase(
       path,
