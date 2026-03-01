@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../theme/app_theme.dart';
 
 class AppColorPicker extends StatelessWidget {
@@ -30,7 +31,10 @@ class AppColorPicker extends StatelessWidget {
               .toColor();
 
           return GestureDetector(
-            onTap: () => onColorSelected(entry.key),
+            onTap: () {
+              HapticFeedback.selectionClick();
+              onColorSelected(entry.key);
+            },
             child: AnimatedContainer(
               duration: const Duration(milliseconds: 200),
               width: 36,

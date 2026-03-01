@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
@@ -72,6 +73,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
   }
 
   void _showNoteOptions(BuildContext context, String noteId) {
+    HapticFeedback.mediumImpact();
     final provider = context.read<NotesProvider>();
     final note = provider.notes.firstWhere((n) => n.id == noteId);
 
@@ -118,6 +120,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                   : Icons.push_pin_outlined,
               label: note.isPinned ? 'Unpin Noot' : 'Pin Noot',
               onTap: () {
+                HapticFeedback.lightImpact();
                 provider.togglePin(noteId);
                 Navigator.pop(ctx);
               },
@@ -126,6 +129,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               icon: Icons.edit_rounded,
               label: 'Edit Noot',
               onTap: () {
+                HapticFeedback.lightImpact();
                 Navigator.pop(ctx);
                 _openNote(context, noteId: noteId);
               },
@@ -135,6 +139,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               label: 'Delete Noot',
               color: AppColors.danger,
               onTap: () {
+                HapticFeedback.mediumImpact();
                 Navigator.pop(ctx);
                 _confirmDelete(context, noteId);
               },
@@ -207,6 +212,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
           ),
           TextButton(
             onPressed: () {
+              HapticFeedback.mediumImpact();
               context.read<NotesProvider>().deleteNote(noteId);
               Navigator.pop(ctx);
             },
@@ -242,7 +248,10 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       floatingActionButton: ScaleTransition(
         scale: _fabScale,
         child: FloatingActionButton(
-          onPressed: () => _openNote(context),
+          onPressed: () {
+            HapticFeedback.lightImpact();
+            _openNote(context);
+          },
           elevation: 4,
           child: const Icon(Icons.add_rounded, size: 30),
         ),

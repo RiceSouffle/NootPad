@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_quill/flutter_quill.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
@@ -541,7 +542,10 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
           Tooltip(
             message: 'Add Image',
             child: GestureDetector(
-              onTap: _showImagePicker,
+              onTap: () {
+                HapticFeedback.lightImpact();
+                _showImagePicker();
+              },
               child: Container(
                 width: 30,
                 height: 30,
@@ -578,6 +582,7 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
       message: tooltip ?? '',
       child: GestureDetector(
         onTap: () {
+          HapticFeedback.selectionClick();
           if (isActive) {
             _quillController.formatSelection(Attribute.clone(attribute, null));
           } else {
@@ -670,7 +675,10 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
     return Tooltip(
       message: tooltip ?? '',
       child: GestureDetector(
-        onTap: onTap,
+        onTap: () {
+          HapticFeedback.lightImpact();
+          onTap();
+        },
         child: Container(
           width: 40,
           height: 40,
@@ -701,7 +709,10 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         GestureDetector(
-          onTap: () => setState(() => _showCategoryField = !_showCategoryField),
+          onTap: () {
+            HapticFeedback.selectionClick();
+            setState(() => _showCategoryField = !_showCategoryField);
+          },
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
             decoration: BoxDecoration(
@@ -752,6 +763,7 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
               final isSelected = _categoryController.text == cat;
               return GestureDetector(
                 onTap: () {
+                  HapticFeedback.selectionClick();
                   setState(() {
                     _categoryController.text = cat;
                     _showCategoryField = false;
