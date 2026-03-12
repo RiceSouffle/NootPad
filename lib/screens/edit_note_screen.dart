@@ -369,6 +369,10 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
             replacement,
             null,
           );
+        } else {
+          // No selection — replace entire document content
+          final docLength = _quillController.document.length;
+          _quillController.replaceText(0, docLength - 1, replacement, null);
         }
       },
       onInsertBelow: (text) {
