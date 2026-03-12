@@ -17,8 +17,6 @@ NootPad combines a warm, pastel aesthetic with intuitive functionality — creat
   <img src="image-5.png" width="200" alt="Search" />
 </p>
 
-
-
 ## Why NootPad?
 
 Most note apps feel cold and utilitarian. NootPad takes a different approach — warm sandy tones, soft pastel note cards, and a handcrafted leaf logo create an experience that feels personal and inviting. It's the note app you'd find on a cozy island getaway.
