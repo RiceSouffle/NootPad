@@ -35,10 +35,18 @@ Most note apps feel cold and utilitarian. NootPad takes a different approach —
 - Filter by category with one tap
 - Beautiful masonry grid that adapts to your content
 
+**Noot AI — Your Smart Writing Companion**
+- Summarize any note into 2–3 key sentences
+- AI writing assistant: expand, rewrite, shorten, or continue your text
+- Smart category suggestions based on note content
+- Ask questions about your notes — AI searches across all your Noots
+
 **Privacy First**
 - All data stored locally on-device with SQLite
 - No accounts, no cloud, no tracking
 - Your notes are yours alone
+- AI features are opt-in — notes are only sent when you tap an AI action
+- API key stored securely on-device via encrypted storage
 
 ## Tech Stack
 
@@ -48,6 +56,8 @@ Most note apps feel cold and utilitarian. NootPad takes a different approach —
 | Rich Text Editor | flutter_quill (Quill Delta) |
 | State Management | Provider |
 | Database | sqflite (SQLite) |
+| AI | Anthropic Claude API via HTTP |
+| Secure Storage | flutter_secure_storage (API key encryption) |
 | Images | image_picker + path_provider |
 | Typography | Google Fonts (Quicksand) |
 | Layout | flutter_staggered_grid_view |
@@ -56,29 +66,63 @@ Most note apps feel cold and utilitarian. NootPad takes a different approach —
 
 ```
 lib/
-  main.dart                        # App entry point
+  main.dart                        # App entry point (MultiProvider)
   models/
     note.dart                      # Note data model (plain + Delta formats)
   services/
     database_service.dart          # SQLite persistence layer (v2 schema)
     image_service.dart             # Gallery/camera image handling
+    ai_service.dart                # AI backend routing (Claude API)
+    ai_prompts.dart                # Prompt templates for all AI features
+    settings_service.dart          # Secure API key storage
   providers/
     notes_provider.dart            # Reactive state + checklist toggling
+    ai_provider.dart               # AI feature state (summarize, write, categorize, Q&A)
   theme/
     app_theme.dart                 # Design system (colors, theme, decorations)
   screens/
     home_screen.dart               # Main notes grid view
     edit_note_screen.dart          # Rich text editor with formatting toolbar
+    settings_screen.dart           # API key config + AI status + privacy info
+    ai_search_screen.dart          # Ask questions about your notes
   widgets/
     note_card.dart                 # Rich text preview + interactive checkboxes
     app_search_bar.dart            # Search bar
     color_picker.dart              # Note color selector
     category_chip.dart             # Category filter chip
     leaf_painter.dart              # Custom-painted leaf logo & decorations
+    ai_summary_sheet.dart          # Note summarization bottom sheet
+    ai_writing_sheet.dart          # Writing assistant bottom sheet
+    ai_category_suggestion.dart    # Smart category suggestion chip
+    ai_status_indicator.dart       # AI backend status badge
 ```
 
 
 ## What's New
+
+**v1.2 — Noot AI**
+
+Your notes just got smarter. NootPad now features a full AI assistant powered by Anthropic Claude — all while keeping your privacy intact.
+
+- **Summarize** — Long-press any note or tap the sparkle icon in the editor to get a concise 2–3 sentence summary
+- **Writing Assistant** — Select text and choose Expand, Rewrite, Shorten, or Continue Writing. Preview the result, then Replace or Insert Below
+- **Smart Categories** — Tap "Suggest" in the category selector and AI will recommend the best category based on your note's content
+- **Ask Noot AI** — A dedicated Q&A screen where you can ask questions across all your notes. AI searches your Noots and tells you which ones have the answer
+- **Settings Screen** — New settings page to manage your Anthropic API key, view AI status, and review privacy info
+- **Graceful Degradation** — No API key? AI buttons show a friendly setup prompt instead of breaking
+
+<p align="center">
+  <img src="image-8.png" width="200" alt="AI settings screen" />
+  <img src="image-9.png" width="200" alt="AI summary" />
+  <img src="image-10.png" width="200" alt="Writing assistant" />
+</p>
+<p align="center">
+  <img src="image-11.png" width="200" alt="Smart category suggestion" />
+  <img src="image-12.png" width="200" alt="Ask Noot AI search" />
+  <img src="image-13.png" width="200" alt="Home screen with AI" />
+</p>
+
+---
 
 **v1.1 — Rich Text & Checklists**
 - Full rich text editor powered by Quill — bold, italic, underline, strikethrough, headings

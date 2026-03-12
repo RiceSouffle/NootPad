@@ -38,6 +38,13 @@ ios/Runner/GeneratedPluginRegistrant.*
 # macOS
 .DS_Store
 
+# Signing & secrets
+*.jks
+*.keystore
+key.properties
+.env
+.env.*
+
 # Misc
 *.log
 pubspec.lock

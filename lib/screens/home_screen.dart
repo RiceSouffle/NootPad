@@ -3,13 +3,17 @@ import 'package:flutter/services.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+import '../providers/ai_provider.dart';
 import '../providers/notes_provider.dart';
 import '../theme/app_theme.dart';
+import '../widgets/ai_summary_sheet.dart';
 import '../widgets/app_search_bar.dart';
 import '../widgets/category_chip.dart';
 import '../widgets/note_card.dart';
 import '../widgets/leaf_painter.dart';
+import 'ai_search_screen.dart';
 import 'edit_note_screen.dart';
+import 'settings_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -134,6 +138,20 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 _openNote(context, noteId: noteId);
               },
             ),
+            Consumer<AiProvider>(
+              builder: (context, aiProvider, _) {
+                if (!aiProvider.isAvailable) return const SizedBox.shrink();
+                return _buildOptionTile(
+                  icon: Icons.auto_awesome_rounded,
+                  label: 'Summarize Noot',
+                  color: AppColors.teal,
+                  onTap: () {
+                    Navigator.pop(ctx);
+                    showAiSummarySheet(context, note);
+                  },
+                );
+              },
+            ),
             _buildOptionTile(
               icon: Icons.delete_outline_rounded,
               label: 'Delete Noot',
@@ -229,6 +247,67 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
     );
   }
 
+  void _showAiSetupPrompt(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppColors.surfaceWarm,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: const BorderSide(color: AppColors.divider, width: 2),
+        ),
+        title: Row(
+          children: [
+            Icon(Icons.auto_awesome_rounded, size: 22, color: AppColors.teal),
+            const SizedBox(width: 8),
+            Text(
+              'Set up Noot AI',
+              style: GoogleFonts.quicksand(
+                fontWeight: FontWeight.w700,
+                color: AppColors.textDark,
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          'Add your Anthropic API key in Settings to use AI features like summarization, writing help, and smart search.',
+          style: GoogleFonts.quicksand(
+            color: AppColors.textMedium,
+            height: 1.5,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: Text(
+              'Later',
+              style: GoogleFonts.quicksand(
+                fontWeight: FontWeight.w700,
+                color: AppColors.textLight,
+              ),
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const SettingsScreen()),
+              );
+            },
+            child: Text(
+              'Go to Settings',
+              style: GoogleFonts.quicksand(
+                fontWeight: FontWeight.w700,
+                color: AppColors.teal,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -298,6 +377,26 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               ),
             ),
           ),
+          const SizedBox(width: 8),
+          GestureDetector(
+            onTap: () {
+              HapticFeedback.lightImpact();
+              Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const SettingsScreen()),
+              );
+            },
+            child: Container(
+              width: 38,
+              height: 38,
+              decoration: BoxDecoration(
+                color: AppColors.textDark.withValues(alpha: 0.05),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.settings_rounded,
+                  size: 20, color: AppColors.textMedium),
+            ),
+          ),
         ],
       ),
     );
@@ -308,10 +407,46 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
       padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
       child: Column(
         children: [
-          AppSearchBar(
-            onChanged: (query) {
-              context.read<NotesProvider>().setSearchQuery(query);
-            },
+          Row(
+            children: [
+              Expanded(
+                child: AppSearchBar(
+                  onChanged: (query) {
+                    context.read<NotesProvider>().setSearchQuery(query);
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              Consumer<AiProvider>(
+                builder: (context, aiProvider, _) => GestureDetector(
+                  onTap: () {
+                    HapticFeedback.lightImpact();
+                    if (aiProvider.isAvailable) {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const AiSearchScreen()),
+                      );
+                    } else {
+                      _showAiSetupPrompt(context);
+                    }
+                  },
+                  child: Container(
+                    width: 44,
+                    height: 44,
+                    decoration: BoxDecoration(
+                      color: AppColors.teal.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(14),
+                      border: Border.all(
+                        color: AppColors.teal.withValues(alpha: 0.25),
+                      ),
+                    ),
+                    child: const Icon(Icons.auto_awesome_rounded,
+                        size: 22, color: AppColors.teal),
+                  ),
+                ),
+              ),
+            ],
           ),
           const SizedBox(height: 10),
           Consumer<NotesProvider>(

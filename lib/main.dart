@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
+import 'providers/ai_provider.dart';
 import 'providers/notes_provider.dart';
 import 'screens/home_screen.dart';
 import 'theme/app_theme.dart';
@@ -23,8 +24,11 @@ class NootPadApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => NotesProvider(),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => NotesProvider()),
+        ChangeNotifierProvider(create: (_) => AiProvider()..initialize()),
+      ],
       child: MaterialApp(
         title: 'NootPad',
         theme: AppTheme.theme,

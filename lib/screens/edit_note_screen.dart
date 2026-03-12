@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
@@ -8,9 +9,13 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 import 'package:provider/provider.dart';
 import '../models/note.dart';
+import '../providers/ai_provider.dart';
 import '../providers/notes_provider.dart';
 import '../services/image_service.dart';
 import '../theme/app_theme.dart';
+import '../widgets/ai_category_suggestion.dart';
+import '../widgets/ai_summary_sheet.dart';
+import '../widgets/ai_writing_sheet.dart';
 import '../widgets/color_picker.dart';
 
 class EditNoteScreen extends StatefulWidget {
@@ -25,6 +30,7 @@ class EditNoteScreen extends StatefulWidget {
 class _EditNoteScreenState extends State<EditNoteScreen> {
   static const _maxTitleLength = 500;
   static const _maxCategoryLength = 50;
+  static const _autoSaveDelay = Duration(seconds: 2);
 
   late TextEditingController _titleController;
   late QuillController _quillController;
@@ -35,6 +41,9 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
   bool _isNewNote = true;
   Note? _existingNote;
   bool _showCategoryField = false;
+  Timer? _autoSaveTimer;
+  bool _isSaving = false;
+  bool _isLoadingNote = false;
 
   /// Strip dangerous Unicode characters (bidi overrides, zero-width).
   static String _sanitize(String input) {
@@ -63,6 +72,8 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
     _editorFocusNode = FocusNode();
 
     _attachQuillListener();
+    _titleController.addListener(_scheduleAutoSave);
+    _categoryController.addListener(_scheduleAutoSave);
 
     if (widget.noteId != null) {
       _isNewNote = false;
@@ -72,14 +83,24 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
     }
   }
 
-  /// Rebuild toolbar when selection/formatting changes.
+  /// Rebuild toolbar when selection/formatting changes, and trigger auto-save.
   void _attachQuillListener() {
     _quillController.addListener(() {
       if (mounted) setState(() {});
+      _scheduleAutoSave();
+    });
+  }
+
+  void _scheduleAutoSave() {
+    if (_isLoadingNote) return;
+    _autoSaveTimer?.cancel();
+    _autoSaveTimer = Timer(_autoSaveDelay, () {
+      if (mounted) _performSave();
     });
   }
 
   void _loadNote() {
+    _isLoadingNote = true;
     final provider = context.read<NotesProvider>();
     try {
       _existingNote = provider.notes.firstWhere((n) => n.id == widget.noteId);
@@ -113,6 +134,8 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
     } catch (e) {
       debugPrint('Failed to load note: $e');
       Navigator.pop(context);
+    } finally {
+      _isLoadingNote = false;
     }
   }
 
@@ -128,6 +151,7 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
 
   @override
   void dispose() {
+    _autoSaveTimer?.cancel();
     _titleController.dispose();
     _quillController.dispose();
     _categoryController.dispose();
@@ -136,46 +160,61 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
     super.dispose();
   }
 
+  /// Save without navigating away. Called by auto-save timer.
+  Future<void> _performSave() async {
+    if (_isSaving) return;
+    _isSaving = true;
+
+    try {
+      var title = _sanitize(_titleController.text);
+      if (title.length > _maxTitleLength) {
+        title = title.substring(0, _maxTitleLength);
+      }
+      final deltaJson =
+          jsonEncode(_quillController.document.toDelta().toJson());
+      final plainText = _quillController.document.toPlainText().trim();
+      var category = _sanitize(_categoryController.text);
+      if (category.isEmpty) category = 'General';
+      if (category.length > _maxCategoryLength) {
+        category = category.substring(0, _maxCategoryLength);
+      }
+
+      // Don't save if completely empty
+      if (title.isEmpty && plainText.isEmpty) return;
+
+      final provider = context.read<NotesProvider>();
+
+      if (_isNewNote) {
+        final created = await provider.createNote(
+          title: title.isEmpty ? 'Untitled' : title,
+          content: deltaJson,
+          contentFormat: 'delta',
+          category: category,
+          color: _selectedColor,
+        );
+        _existingNote = created;
+        _isNewNote = false;
+      } else if (_existingNote != null) {
+        final updated = _existingNote!.copyWith(
+          title: title.isEmpty ? 'Untitled' : title,
+          content: deltaJson,
+          contentFormat: 'delta',
+          category: category,
+          color: _selectedColor,
+          updatedAt: DateTime.now(),
+        );
+        await provider.updateNote(updated);
+        _existingNote = updated;
+      }
+    } finally {
+      _isSaving = false;
+    }
+  }
+
+  /// Save and navigate back.
   Future<void> _saveNote() async {
-    var title = _sanitize(_titleController.text);
-    if (title.length > _maxTitleLength) {
-      title = title.substring(0, _maxTitleLength);
-    }
-    final deltaJson = jsonEncode(_quillController.document.toDelta().toJson());
-    final plainText = _quillController.document.toPlainText().trim();
-    var category = _sanitize(_categoryController.text);
-    if (category.isEmpty) category = 'General';
-    if (category.length > _maxCategoryLength) {
-      category = category.substring(0, _maxCategoryLength);
-    }
-
-    if (title.isEmpty && plainText.isEmpty) {
-      Navigator.pop(context);
-      return;
-    }
-
-    final provider = context.read<NotesProvider>();
-
-    if (_isNewNote) {
-      await provider.createNote(
-        title: title.isEmpty ? 'Untitled' : title,
-        content: deltaJson,
-        contentFormat: 'delta',
-        category: category,
-        color: _selectedColor,
-      );
-    } else if (_existingNote != null) {
-      final updated = _existingNote!.copyWith(
-        title: title.isEmpty ? 'Untitled' : title,
-        content: deltaJson,
-        contentFormat: 'delta',
-        category: category,
-        color: _selectedColor,
-        updatedAt: DateTime.now(),
-      );
-      await provider.updateNote(updated);
-    }
-
+    _autoSaveTimer?.cancel();
+    await _performSave();
     if (mounted) Navigator.pop(context);
   }
 
@@ -190,6 +229,159 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
         ChangeSource.local,
       );
     }
+  }
+
+  void _showAiActions() {
+    HapticFeedback.lightImpact();
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        decoration: const BoxDecoration(
+          color: AppColors.surfaceWarm,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          border: Border(
+            top: BorderSide(color: AppColors.divider, width: 2),
+            left: BorderSide(color: AppColors.divider, width: 2),
+            right: BorderSide(color: AppColors.divider, width: 2),
+          ),
+        ),
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 40,
+              height: 4,
+              decoration: BoxDecoration(
+                color: AppColors.divider,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Noot AI',
+              style: GoogleFonts.quicksand(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textDark,
+              ),
+            ),
+            const SizedBox(height: 16),
+            ListTile(
+              leading: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: AppColors.teal.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.summarize_rounded,
+                    color: AppColors.teal, size: 22),
+              ),
+              title: Text(
+                'Summarize this Noot',
+                style: GoogleFonts.quicksand(
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textDark,
+                ),
+              ),
+              onTap: () {
+                Navigator.pop(ctx);
+                if (_existingNote != null) {
+                  showAiSummarySheet(context, _existingNote!);
+                } else {
+                  // Create a temp note from current content
+                  final tempNote = Note(
+                    id: '',
+                    title: _titleController.text,
+                    content: jsonEncode(
+                        _quillController.document.toDelta().toJson()),
+                    contentFormat: 'delta',
+                    createdAt: DateTime.now(),
+                    updatedAt: DateTime.now(),
+                  );
+                  showAiSummarySheet(context, tempNote);
+                }
+              },
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+            ),
+            ListTile(
+              leading: Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: AppColors.accent.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: const Icon(Icons.auto_awesome_rounded,
+                    color: AppColors.accentDark, size: 22),
+              ),
+              title: Text(
+                'Writing Assistant',
+                style: GoogleFonts.quicksand(
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textDark,
+                ),
+              ),
+              onTap: () {
+                Navigator.pop(ctx);
+                _showWritingAssistant();
+              },
+              shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12)),
+            ),
+            SizedBox(height: MediaQuery.of(context).padding.bottom),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showWritingAssistant() {
+    final selection = _quillController.selection;
+    final String selectedText;
+
+    if (selection.isCollapsed) {
+      selectedText = _quillController.document.toPlainText().trim();
+    } else {
+      selectedText = _quillController.document
+          .toPlainText()
+          .substring(
+            selection.start.clamp(0, _quillController.document.length - 1),
+            selection.end.clamp(0, _quillController.document.length - 1),
+          )
+          .trim();
+    }
+
+    if (selectedText.isEmpty) return;
+
+    showAiWritingSheet(
+      context,
+      selectedText: selectedText,
+      onReplace: (replacement) {
+        if (!selection.isCollapsed) {
+          final length = selection.end - selection.start;
+          _quillController.replaceText(
+            selection.start,
+            length,
+            replacement,
+            null,
+          );
+        }
+      },
+      onInsertBelow: (text) {
+        final insertAt = selection.isCollapsed
+            ? _quillController.document.length - 1
+            : selection.end;
+        _quillController.document.insert(insertAt, '\n$text');
+        _quillController.updateSelection(
+          TextSelection.collapsed(offset: insertAt + text.length + 1),
+          ChangeSource.local,
+        );
+      },
+    );
   }
 
   void _showImagePicker() {
@@ -307,6 +499,7 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
                             selectedColor: _selectedColor,
                             onColorSelected: (color) {
                               setState(() => _selectedColor = color);
+                              _scheduleAutoSave();
                             },
                           ),
                           const SizedBox(height: 16),
@@ -468,8 +661,8 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
         null,
       ),
       lists: DefaultListBlockStyle(
-        baseStyle,
-        const HorizontalSpacing(0, 0),
+        baseStyle.copyWith(height: 1.2),
+        const HorizontalSpacing(16, 0),
         const VerticalSpacing(4, 4),
         const VerticalSpacing(0, 0),
         null,
@@ -560,6 +753,37 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
                 ),
               ),
             ),
+          ),
+          // AI Writing Assistant button
+          Consumer<AiProvider>(
+            builder: (context, aiProvider, _) {
+              if (!aiProvider.isAvailable) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.only(left: 4),
+                child: Tooltip(
+                  message: 'AI Writing Assistant',
+                  child: GestureDetector(
+                    onTap: () {
+                      HapticFeedback.lightImpact();
+                      _showWritingAssistant();
+                    },
+                    child: Container(
+                      width: 30,
+                      height: 30,
+                      decoration: const BoxDecoration(
+                        color: AppColors.accent,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(
+                        Icons.auto_awesome_rounded,
+                        color: Colors.white,
+                        size: 16,
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
           ),
         ],
       ),
@@ -654,6 +878,20 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
             ),
           ),
           const Spacer(),
+          // AI button
+          Consumer<AiProvider>(
+            builder: (context, aiProvider, _) {
+              if (!aiProvider.isAvailable) return const SizedBox.shrink();
+              return Padding(
+                padding: const EdgeInsets.only(right: 4),
+                child: _buildToolButton(
+                  icon: Icons.auto_awesome_rounded,
+                  onTap: _showAiActions,
+                  tooltip: 'Noot AI',
+                ),
+              );
+            },
+          ),
           // Save button
           _buildToolButton(
             icon: Icons.check_rounded,
@@ -798,42 +1036,61 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
             }).toList(),
           ),
           const SizedBox(height: 8),
-          SizedBox(
-            height: 36,
-            child: TextField(
-              controller: _categoryController,
-              style: GoogleFonts.quicksand(
-                fontSize: 13,
-                color: AppColors.textDark,
-                fontWeight: FontWeight.w600,
+          Row(
+            children: [
+              Expanded(
+                child: SizedBox(
+                  height: 36,
+                  child: TextField(
+                    controller: _categoryController,
+                    style: GoogleFonts.quicksand(
+                      fontSize: 13,
+                      color: AppColors.textDark,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    decoration: InputDecoration(
+                      hintText: 'Or type custom category...',
+                      hintStyle: GoogleFonts.quicksand(
+                        fontSize: 13,
+                        color: AppColors.textLight.withValues(alpha: 0.5),
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(
+                            color: AppColors.textDark.withValues(alpha: 0.1)),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: BorderSide(
+                            color: AppColors.textDark.withValues(alpha: 0.1)),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(10),
+                        borderSide: const BorderSide(color: AppColors.leafGreen),
+                      ),
+                      fillColor: AppColors.surface,
+                      filled: true,
+                      contentPadding:
+                          const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                      isDense: true,
+                    ),
+                  ),
+                ),
               ),
-              decoration: InputDecoration(
-                hintText: 'Or type custom category...',
-                hintStyle: GoogleFonts.quicksand(
-                  fontSize: 13,
-                  color: AppColors.textLight.withValues(alpha: 0.5),
-                ),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide(
-                      color: AppColors.textDark.withValues(alpha: 0.1)),
-                ),
-                enabledBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: BorderSide(
-                      color: AppColors.textDark.withValues(alpha: 0.1)),
-                ),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(10),
-                  borderSide: const BorderSide(color: AppColors.leafGreen),
-                ),
-                fillColor: AppColors.surface,
-                filled: true,
-                contentPadding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
-                isDense: true,
+              const SizedBox(width: 8),
+              AiCategorySuggestion(
+                note: _existingNote,
+                currentTitle: _titleController.text,
+                currentContent: _quillController.document.toPlainText().trim(),
+                onAccept: (category) {
+                  HapticFeedback.lightImpact();
+                  setState(() {
+                    _categoryController.text = category;
+                    _showCategoryField = false;
+                  });
+                },
               ),
-            ),
+            ],
           ),
         ],
       ],

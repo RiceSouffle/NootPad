@@ -42,6 +42,10 @@ class AppColors {
   static const Color iconBg = Color(0xFFF0E4D0);
   static const Color danger = Color(0xFFE88B8B);
 
+  // AI-specific
+  static const Color aiShimmer = Color(0xFFB8E5D8);
+  static const Color aiGlow = Color(0x206DC5B0);
+
   static Color getNoteColor(String colorName) {
     switch (colorName) {
       case 'pink':
@@ -237,6 +241,22 @@ class AppDecorations {
         border: const Border(
           top: BorderSide(color: AppColors.divider, width: 1.5),
         ),
+      );
+
+  static BoxDecoration get aiResultDecoration => BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(
+          color: AppColors.teal.withValues(alpha: 0.3),
+          width: 1.5,
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.teal.withValues(alpha: 0.08),
+            blurRadius: 8,
+            offset: const Offset(0, 2),
+          ),
+        ],
       );
 
   static BoxDecoration get bottomBarDecoration => BoxDecoration(
