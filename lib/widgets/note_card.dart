@@ -9,37 +9,7 @@ import '../models/note.dart';
 import '../providers/notes_provider.dart';
 import '../services/image_service.dart';
 import '../theme/app_theme.dart';
-
-/// A text segment with optional inline formatting attributes.
-class _TextSegment {
-  final String text;
-  final Map<String, dynamic>? attrs;
-
-  const _TextSegment({required this.text, this.attrs});
-}
-
-/// A parsed line from a Quill Delta document.
-class _DeltaLine {
-  final List<_TextSegment> segments;
-  final Map<String, dynamic>? blockAttrs;
-  final int newlineOpIndex;
-
-  const _DeltaLine({
-    required this.segments,
-    this.blockAttrs,
-    required this.newlineOpIndex,
-  });
-
-  bool get isChecklist =>
-      blockAttrs?['list'] == 'checked' || blockAttrs?['list'] == 'unchecked';
-  bool get isChecked => blockAttrs?['list'] == 'checked';
-  bool get isHeading => blockAttrs != null && blockAttrs!.containsKey('header');
-  int get headingLevel => (blockAttrs?['header'] as int?) ?? 0;
-  bool get isBulletList => blockAttrs?['list'] == 'bullet';
-  bool get isOrderedList => blockAttrs?['list'] == 'ordered';
-  String get plainText => segments.map((s) => s.text).join();
-  bool get isEmpty => segments.every((s) => s.text.trim().isEmpty);
-}
+import '../utils/delta_parser.dart';
 
 class NoteCard extends StatelessWidget {
   final Note note;
@@ -383,7 +353,7 @@ class NoteCard extends StatelessWidget {
   }
 
   /// Build an interactive checklist row for the card.
-  Widget _buildChecklistRow(BuildContext context, _DeltaLine line) {
+  Widget _buildChecklistRow(BuildContext context, DeltaLine line) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () {
@@ -416,7 +386,7 @@ class NoteCard extends StatelessWidget {
   }
 
   /// Build text for a checklist item with strikethrough when checked.
-  Widget _buildChecklistText(_DeltaLine line) {
+  Widget _buildChecklistText(DeltaLine line) {
     final isChecked = line.isChecked;
     final baseColor = isChecked ? AppColors.textLight : AppColors.textMedium;
 
@@ -456,7 +426,7 @@ class NoteCard extends StatelessWidget {
   }
 
   /// Build a rich text line (with formatting, bullet/number prefix, heading style).
-  Widget _buildRichTextLine(_DeltaLine line, int orderedIndex) {
+  Widget _buildRichTextLine(DeltaLine line, int orderedIndex) {
     // Determine base style based on line type
     TextStyle baseStyle;
     if (line.isHeading) {
@@ -539,69 +509,9 @@ class NoteCard extends StatelessWidget {
   // ---------------------------------------------------------------------------
 
   /// Parse the Delta JSON into structured lines with segments and block attributes.
-  List<_DeltaLine> _parseDeltaLines() {
+  List<DeltaLine> _parseDeltaLines() {
     if (!note.isDelta || note.content.isEmpty) return [];
-
-    try {
-      final decoded = jsonDecode(note.content);
-      if (decoded is! List) return [];
-      final lines = <_DeltaLine>[];
-      var currentSegments = <_TextSegment>[];
-
-      for (int i = 0; i < decoded.length; i++) {
-        final rawOp = decoded[i];
-        if (rawOp is! Map<String, dynamic>) continue;
-        final insert = rawOp['insert'];
-        final rawAttrs = rawOp['attributes'];
-        final attrs = (rawAttrs is Map<String, dynamic>) ? rawAttrs : null;
-
-        if (insert is String) {
-          if (insert == '\n') {
-            lines.add(_DeltaLine(
-              segments: List.from(currentSegments),
-              blockAttrs: attrs,
-              newlineOpIndex: i,
-            ));
-            currentSegments = [];
-          } else if (insert.contains('\n')) {
-            // Multi-character insert with embedded newlines
-            final parts = insert.split('\n');
-            for (int j = 0; j < parts.length; j++) {
-              if (parts[j].isNotEmpty) {
-                currentSegments
-                    .add(_TextSegment(text: parts[j], attrs: attrs));
-              }
-              if (j < parts.length - 1) {
-                // Inline newline — no block attributes
-                lines.add(_DeltaLine(
-                  segments: List.from(currentSegments),
-                  newlineOpIndex: i,
-                ));
-                currentSegments = [];
-              }
-            }
-          } else {
-            currentSegments.add(_TextSegment(text: insert, attrs: attrs));
-          }
-        }
-        // Embeds (images) are handled separately via _extractImageUrls
-      }
-
-      // Add any trailing segments without a newline
-      if (currentSegments.isNotEmpty) {
-        lines.add(_DeltaLine(
-          segments: currentSegments,
-          newlineOpIndex: -1,
-        ));
-      }
-
-      return lines;
-    } on FormatException {
-      return [];
-    } catch (e) {
-      debugPrint('Error parsing Delta lines: $e');
-      return [];
-    }
+    return DeltaParser.parseLines(note.content);
   }
 
   // ---------------------------------------------------------------------------

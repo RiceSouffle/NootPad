@@ -11,6 +11,7 @@ import 'package:provider/provider.dart';
 import '../models/note.dart';
 import '../providers/ai_provider.dart';
 import '../providers/notes_provider.dart';
+import '../services/database_service.dart';
 import '../services/image_service.dart';
 import '../theme/app_theme.dart';
 import '../widgets/ai_category_suggestion.dart';
@@ -99,11 +100,14 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
     });
   }
 
-  void _loadNote() {
+  Future<void> _loadNote() async {
     _isLoadingNote = true;
-    final provider = context.read<NotesProvider>();
     try {
-      _existingNote = provider.notes.firstWhere((n) => n.id == widget.noteId);
+      // Read fresh from DB — the in-memory provider cache may be stale
+      // (e.g. after a widget background toggle).
+      final allNotes = await DatabaseService().getAllNotes();
+      _existingNote = allNotes.firstWhere((n) => n.id == widget.noteId);
+      if (!mounted) return;
       setState(() {
         _titleController.text = _existingNote!.title;
         _categoryController.text = _existingNote!.category;
@@ -133,7 +137,7 @@ class _EditNoteScreenState extends State<EditNoteScreen> {
       });
     } catch (e) {
       debugPrint('Failed to load note: $e');
-      Navigator.pop(context);
+      if (mounted) Navigator.pop(context);
     } finally {
       _isLoadingNote = false;
     }

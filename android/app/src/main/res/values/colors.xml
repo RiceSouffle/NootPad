@@ -1,4 +1,23 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <color name="ic_launcher_background">#F2DFC3</color>
+
+    <!-- Widget colors -->
+    <color name="widget_bg">#F2DFC3</color>
+    <color name="widget_surface">#FFFEF5</color>
+    <color name="text_dark">#3D2E1C</color>
+    <color name="text_medium">#5C4A32</color>
+    <color name="text_light">#9B8568</color>
+    <color name="teal_accent">#6DC5B0</color>
+    <color name="divider">#E0D0B8</color>
+
+    <!-- Note colors -->
+    <color name="note_cream">#FFFEF2</color>
+    <color name="note_pink">#FFD4D4</color>
+    <color name="note_blue">#D4E8FF</color>
+    <color name="note_yellow">#FFF4B8</color>
+    <color name="note_green">#D4F0D4</color>
+    <color name="note_orange">#FFE4C4</color>
+    <color name="note_purple">#E8D4F0</color>
+    <color name="note_mint">#D4F0E8</color>
 </resources>

@@ -56,6 +56,7 @@ Most note apps feel cold and utilitarian. NootPad takes a different approach —
 | Database | sqflite (SQLite) |
 | AI | Anthropic Claude API via HTTP |
 | Secure Storage | flutter_secure_storage (API key encryption) |
+| Home Screen Widgets | home_widget + native Android RemoteViews |
 | Images | image_picker + path_provider |
 | Typography | Google Fonts (Quicksand) |
 | Layout | flutter_staggered_grid_view |
@@ -64,18 +65,21 @@ Most note apps feel cold and utilitarian. NootPad takes a different approach —
 
 ```
 lib/
-  main.dart                        # App entry point (MultiProvider)
+  main.dart                        # App entry point (MultiProvider + lifecycle observer)
   models/
     note.dart                      # Note data model (plain + Delta formats)
   services/
     database_service.dart          # SQLite persistence layer (v2 schema)
+    widget_service.dart            # Home screen widget data sync + background callbacks
     image_service.dart             # Gallery/camera image handling
     ai_service.dart                # AI backend routing (Claude API)
     ai_prompts.dart                # Prompt templates for all AI features
     settings_service.dart          # Secure API key storage
   providers/
-    notes_provider.dart            # Reactive state + checklist toggling
+    notes_provider.dart            # Reactive state + checklist toggling + widget sync
     ai_provider.dart               # AI feature state (summarize, write, categorize, Q&A)
+  utils/
+    delta_parser.dart              # Shared Quill Delta parser (lines, checklists, plain text)
   theme/
     app_theme.dart                 # Design system (colors, theme, decorations)
   screens/
@@ -93,10 +97,36 @@ lib/
     ai_writing_sheet.dart          # Writing assistant bottom sheet
     ai_category_suggestion.dart    # Smart category suggestion chip
     ai_status_indicator.dart       # AI backend status badge
+
+android/app/src/main/kotlin/com/sef/nootpad/
+  NoteCollectionWidgetProvider.kt  # Recent notes grid widget
+  NoteCollectionRemoteViewsService.kt  # Grid item data factory
+  SingleNoteWidgetProvider.kt      # Single note widget with checklist
+  SingleNoteRemoteViewsService.kt  # Checklist item data factory
+  WidgetConfigActivity.kt          # Native note picker for widget setup
 ```
 
 
 ## What's New
+
+**v1.3 — Home Screen Widgets**
+
+Your Noots now live on your home screen. Two new Android widgets bring your notes front and center — no need to open the app.
+
+- **Recent Noots Widget** — A 2-column grid showing your latest notes with color-coded cards. Tap any note to jump straight into the editor, or tap "+" to create a new Noot
+- **Single Noot Widget** — Pin any individual note to your home screen. Displays the title, content preview, and interactive checklist items
+- **Interactive Checklists** — Check off items directly from the home screen widget — no need to open the app. Changes sync bidirectionally between the widget and the app
+- **Native Note Picker** — Clean, native Android configuration screen lets you choose which Noot to pin when adding a Single Noot widget
+- **Bidirectional Sync** — Edit a note in the app and the widget updates automatically. Toggle a checklist on the widget and it's saved to the database instantly
+- **Background Processing** — Widget interactions are handled via a background Dart isolate, so everything stays fast and responsive
+
+<p align="center">
+  <img src="image-16.png" width="200" alt="Widget picker" />
+  <img src="image-14.png" width="200" alt="Recent Noots widget" />
+  <img src="image-15.png" width="200" alt="Single Noot widget" />
+</p>
+
+---
 
 **v1.2 — Noot AI**
 

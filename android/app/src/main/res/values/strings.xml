@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="widget_collection_name">Recent Noots</string>
+    <string name="widget_collection_desc">View your recent Noots</string>
+    <string name="widget_single_name">Single Noot</string>
+    <string name="widget_single_desc">Pin a single Noot to your home screen</string>
+    <string name="no_notes">No noots yet!</string>
+    <string name="widget_config_title">Choose a Noot</string>
+    <string name="widget_config_select">Select</string>
+    <string name="app_name">NootPad</string>
+</resources>

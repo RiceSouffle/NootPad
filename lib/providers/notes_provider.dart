@@ -4,6 +4,7 @@ import 'package:flutter_quill/flutter_quill.dart';
 import 'package:uuid/uuid.dart';
 import '../models/note.dart';
 import '../services/database_service.dart';
+import '../services/widget_service.dart';
 
 class NotesProvider extends ChangeNotifier {
   final DatabaseService _dbService = DatabaseService();
@@ -40,6 +41,7 @@ class NotesProvider extends ChangeNotifier {
 
     _isLoading = false;
     notifyListeners();
+    _syncWidgets();
   }
 
   /// Validate that a decoded JSON value is a well-formed Delta ops array.
@@ -94,6 +96,7 @@ class NotesProvider extends ChangeNotifier {
     _notes.insert(0, note);
     _applyFilters();
     notifyListeners();
+    _syncWidgets();
     return note;
   }
 
@@ -106,6 +109,7 @@ class NotesProvider extends ChangeNotifier {
       _notes[index] = updated;
       _applyFilters();
       notifyListeners();
+      _syncWidgets();
     }
   }
 
@@ -114,6 +118,7 @@ class NotesProvider extends ChangeNotifier {
     _notes.removeWhere((n) => n.id == id);
     _applyFilters();
     notifyListeners();
+    _syncWidgets();
   }
 
   Future<void> togglePin(String id) async {
@@ -132,6 +137,7 @@ class NotesProvider extends ChangeNotifier {
       });
       _applyFilters();
       notifyListeners();
+      _syncWidgets();
     }
   }
 
@@ -182,6 +188,7 @@ class NotesProvider extends ChangeNotifier {
       _notes[index] = updated;
       _applyFilters();
       notifyListeners();
+      _syncWidgets();
     } on FormatException catch (e) {
       debugPrint('Invalid JSON in checklist toggle: $e');
     } catch (e) {
@@ -199,6 +206,15 @@ class NotesProvider extends ChangeNotifier {
     _selectedCategory = category;
     _applyFilters();
     notifyListeners();
+  }
+
+  /// Sync current notes to home screen widgets.
+  void _syncWidgets() {
+    WidgetService.syncRecentNotes(_notes)
+        .then((_) => WidgetService.syncAllNotesForPicker(_notes))
+        .then((_) => WidgetService.syncAllSingleNoteWidgets(_notes))
+        .then((_) => WidgetService.updateAllWidgets())
+        .catchError((e) => debugPrint('Widget sync error: $e'));
   }
 
   void _applyFilters() {
