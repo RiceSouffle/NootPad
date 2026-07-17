@@ -1,3 +1,4 @@
+import 'dart:collection';
 import 'dart:convert';
 
 /// A text segment with optional inline formatting attributes.
@@ -50,16 +51,54 @@ class ChecklistItem {
       };
 }
 
-/// Utility for parsing Quill Delta JSON into structured data.
-class DeltaParser {
-  /// Parse Delta JSON string into structured lines.
-  static List<DeltaLine> parseLines(String deltaJson) {
-    if (deltaJson.isEmpty) return [];
+/// The fully-parsed form of a Delta document: structured lines plus any
+/// embedded image paths/URLs, computed in a single pass.
+class ParsedDelta {
+  final List<DeltaLine> lines;
+  final List<String> imageUrls;
 
+  const ParsedDelta({required this.lines, required this.imageUrls});
+
+  static const ParsedDelta empty = ParsedDelta(lines: [], imageUrls: []);
+}
+
+/// Utility for parsing Quill Delta JSON into structured data.
+///
+/// Results are cached by raw JSON string so widgets that rebuild frequently
+/// (e.g. note cards during scroll/search) don't re-decode unchanged content.
+class DeltaParser {
+  DeltaParser._();
+
+  static const int _maxCacheEntries = 96;
+  static final LinkedHashMap<String, ParsedDelta> _cache =
+      LinkedHashMap<String, ParsedDelta>();
+
+  /// Parse Delta JSON into lines + image list, memoized by content string.
+  static ParsedDelta parse(String deltaJson) {
+    if (deltaJson.isEmpty) return ParsedDelta.empty;
+
+    final cached = _cache.remove(deltaJson);
+    if (cached != null) {
+      _cache[deltaJson] = cached; // move to most-recently-used
+      return cached;
+    }
+
+    final result = _parse(deltaJson);
+
+    _cache[deltaJson] = result;
+    if (_cache.length > _maxCacheEntries) {
+      _cache.remove(_cache.keys.first); // evict least-recently-used
+    }
+    return result;
+  }
+
+  static ParsedDelta _parse(String deltaJson) {
     try {
       final decoded = jsonDecode(deltaJson);
-      if (decoded is! List) return [];
+      if (decoded is! List) return ParsedDelta.empty;
+
       final lines = <DeltaLine>[];
+      final images = <String>[];
       var currentSegments = <TextSegment>[];
 
       for (int i = 0; i < decoded.length; i++) {
@@ -69,20 +108,43 @@ class DeltaParser {
         final rawAttrs = rawOp['attributes'];
         final attrs = (rawAttrs is Map<String, dynamic>) ? rawAttrs : null;
 
-        if (insert is String) {
-          if (insert == '\n') {
-            lines.add(DeltaLine(
-              segments: List.from(currentSegments),
-              blockAttrs: attrs,
-              newlineOpIndex: i,
-            ));
-            currentSegments = [];
-          } else if (insert.contains('\n')) {
+        if (insert is Map) {
+          final image = insert['image'];
+          if (image is String && image.isNotEmpty) {
+            images.add(image);
+          }
+          continue;
+        }
+
+        if (insert is! String) continue;
+
+        if (insert == '\n') {
+          lines.add(DeltaLine(
+            segments: List.from(currentSegments),
+            blockAttrs: attrs,
+            newlineOpIndex: i,
+          ));
+          currentSegments = [];
+        } else if (insert.contains('\n')) {
+          // A run consisting only of newlines carries BLOCK attributes (Quill
+          // merges consecutive block-formatted newlines, e.g. "\n\n" with
+          // {list:checked}); a run mixing text and newlines carries INLINE
+          // attributes that apply to the text segments.
+          final isAllNewlines = insert.replaceAll('\n', '').isEmpty;
+          if (isAllNewlines) {
+            for (int n = 0; n < insert.length; n++) {
+              lines.add(DeltaLine(
+                segments: List.from(currentSegments),
+                blockAttrs: attrs,
+                newlineOpIndex: i,
+              ));
+              currentSegments = [];
+            }
+          } else {
             final parts = insert.split('\n');
             for (int j = 0; j < parts.length; j++) {
               if (parts[j].isNotEmpty) {
-                currentSegments
-                    .add(TextSegment(text: parts[j], attrs: attrs));
+                currentSegments.add(TextSegment(text: parts[j], attrs: attrs));
               }
               if (j < parts.length - 1) {
                 lines.add(DeltaLine(
@@ -92,9 +154,9 @@ class DeltaParser {
                 currentSegments = [];
               }
             }
-          } else {
-            currentSegments.add(TextSegment(text: insert, attrs: attrs));
           }
+        } else {
+          currentSegments.add(TextSegment(text: insert, attrs: attrs));
         }
       }
 
@@ -105,13 +167,20 @@ class DeltaParser {
         ));
       }
 
-      return lines;
+      return ParsedDelta(lines: lines, imageUrls: images);
     } on FormatException {
-      return [];
+      return ParsedDelta.empty;
     } catch (_) {
-      return [];
+      return ParsedDelta.empty;
     }
   }
+
+  /// Parse Delta JSON string into structured lines.
+  static List<DeltaLine> parseLines(String deltaJson) => parse(deltaJson).lines;
+
+  /// Extract image paths/URLs embedded in the Delta JSON.
+  static List<String> extractImages(String deltaJson) =>
+      parse(deltaJson).imageUrls;
 
   /// Extract checklist items from Delta JSON.
   static List<ChecklistItem> extractChecklist(String deltaJson) {

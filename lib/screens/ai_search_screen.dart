@@ -20,41 +20,51 @@ class _AiSearchScreenState extends State<AiSearchScreen> {
   String? _answer;
   String? _error;
   bool _isLoading = false;
+  int _requestId = 0;
+  String? _coverageNote;
 
   @override
   void dispose() {
+    context.read<AiProvider>().cancelInFlight();
     _questionController.dispose();
     super.dispose();
   }
 
   Future<void> _askQuestion() async {
+    if (_isLoading) return; // ignore taps/submits while a request is running
     final question = _questionController.text.trim();
     if (question.isEmpty) return;
 
     HapticFeedback.mediumImpact();
     FocusScope.of(context).unfocus();
 
+    final requestId = ++_requestId;
     setState(() {
       _isLoading = true;
       _answer = null;
       _error = null;
+      _coverageNote = null;
     });
 
     try {
       final aiProvider = context.read<AiProvider>();
       final notesProvider = context.read<NotesProvider>();
+      // Search ALL notes, not the currently filtered subset.
       final result = await aiProvider.askQuestion(
         question: question,
-        notes: notesProvider.notes,
+        notes: notesProvider.allNotes,
       );
-      if (mounted) {
+      if (mounted && requestId == _requestId) {
         setState(() {
           _answer = result;
+          _coverageNote = aiProvider.lastContextTruncated
+              ? 'Searched the ${aiProvider.lastNotesSearched} most recent of ${aiProvider.lastNotesTotal} Noots.'
+              : null;
           _isLoading = false;
         });
       }
     } catch (e) {
-      if (mounted) {
+      if (mounted && requestId == _requestId) {
         setState(() {
           _error = e.toString();
           _isLoading = false;
@@ -314,6 +324,26 @@ class _AiSearchScreenState extends State<AiSearchScreen> {
               height: 1.6,
             ),
           ),
+          if (_coverageNote != null) ...[
+            const SizedBox(height: 12),
+            Row(
+              children: [
+                Icon(Icons.info_outline_rounded,
+                    size: 14, color: AppColors.textLight),
+                const SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    _coverageNote!,
+                    style: GoogleFonts.quicksand(
+                      fontSize: 12,
+                      color: AppColors.textLight,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ],
       ),
     );

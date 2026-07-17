@@ -4,6 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import '../models/note.dart';
 import '../providers/ai_provider.dart';
+import '../services/ai_service.dart';
 import '../theme/app_theme.dart';
 
 class AiCategorySuggestion extends StatefulWidget {
@@ -55,11 +56,26 @@ class _AiCategorySuggestionState extends State<AiCategorySuggestion> {
           _isLoading = false;
         });
       }
-    } catch (_) {
+    } catch (e) {
       if (mounted) {
         setState(() {
           _isLoading = false;
         });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              e is AiUnavailableException
+                  ? 'Add your API key in Settings first.'
+                  : 'Couldn\'t suggest a category — check your connection.',
+              style: GoogleFonts.quicksand(fontWeight: FontWeight.w600),
+            ),
+            backgroundColor: AppColors.textMedium,
+            behavior: SnackBarBehavior.floating,
+            shape:
+                RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            duration: const Duration(seconds: 2),
+          ),
+        );
       }
     }
   }

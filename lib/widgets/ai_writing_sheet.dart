@@ -11,6 +11,7 @@ void showAiWritingSheet(
   required String selectedText,
   required Function(String replacement) onReplace,
   required Function(String text) onInsertBelow,
+  bool wholeNote = false,
 }) {
   HapticFeedback.mediumImpact();
   showModalBottomSheet(
@@ -21,6 +22,7 @@ void showAiWritingSheet(
       selectedText: selectedText,
       onReplace: onReplace,
       onInsertBelow: onInsertBelow,
+      wholeNote: wholeNote,
     ),
   );
 }
@@ -29,11 +31,13 @@ class _AiWritingSheet extends StatefulWidget {
   final String selectedText;
   final Function(String replacement) onReplace;
   final Function(String text) onInsertBelow;
+  final bool wholeNote;
 
   const _AiWritingSheet({
     required this.selectedText,
     required this.onReplace,
     required this.onInsertBelow,
+    this.wholeNote = false,
   });
 
   @override
@@ -44,15 +48,28 @@ class _AiWritingSheetState extends State<_AiWritingSheet> {
   String? _result;
   String? _error;
   bool _isLoading = false;
+  bool _truncated = false;
   WritingAction? _selectedAction;
+  int _requestId = 0;
+
+  @override
+  void dispose() {
+    // Abandon any in-flight request so it can't cost tokens or fire callbacks
+    // after the sheet is gone.
+    context.read<AiProvider>().cancelInFlight();
+    super.dispose();
+  }
 
   Future<void> _runAction(WritingAction action) async {
+    if (_isLoading) return;
     HapticFeedback.lightImpact();
+    final requestId = ++_requestId;
     setState(() {
       _selectedAction = action;
       _isLoading = true;
       _error = null;
       _result = null;
+      _truncated = false;
     });
 
     try {
@@ -61,14 +78,16 @@ class _AiWritingSheetState extends State<_AiWritingSheet> {
         selectedText: widget.selectedText,
         action: action,
       );
-      if (mounted) {
+      final truncated = aiProvider.lastTruncated;
+      if (mounted && requestId == _requestId) {
         setState(() {
           _result = result;
+          _truncated = truncated;
           _isLoading = false;
         });
       }
     } catch (e) {
-      if (mounted) {
+      if (mounted && requestId == _requestId) {
         setState(() {
           _error = e.toString();
           _isLoading = false;
@@ -180,7 +199,7 @@ class _AiWritingSheetState extends State<_AiWritingSheet> {
     required WritingAction action,
   }) {
     final isSelected = _selectedAction == action;
-    final isDisabled = _isLoading && !isSelected;
+    final isDisabled = _isLoading;
 
     return GestureDetector(
       onTap: isDisabled ? null : () => _runAction(action),
@@ -224,6 +243,39 @@ class _AiWritingSheetState extends State<_AiWritingSheet> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildTruncationWarning() {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: AppColors.accent.withValues(alpha: 0.18),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: AppColors.accentDark.withValues(alpha: 0.4)),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.info_outline_rounded,
+              size: 16, color: AppColors.accentDark),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              widget.wholeNote
+                  ? 'This reply was cut short. Prefer "Insert Below" so you don\'t overwrite your note with partial text.'
+                  : 'This reply was cut short by length limits.',
+              style: GoogleFonts.quicksand(
+                fontSize: 12,
+                color: AppColors.textMedium,
+                fontWeight: FontWeight.w600,
+                height: 1.3,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -294,6 +346,7 @@ class _AiWritingSheetState extends State<_AiWritingSheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (_truncated) _buildTruncationWarning(),
           // Result preview
           Flexible(
             child: Container(

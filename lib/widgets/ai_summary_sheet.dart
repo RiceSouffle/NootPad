@@ -33,7 +33,18 @@ class _AiSummarySheetState extends State<_AiSummarySheet> {
   @override
   void initState() {
     super.initState();
-    _generateSummary();
+    // Defer to after the first frame: summarize() calls notifyListeners()
+    // synchronously, which would throw if fired during the build phase.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _generateSummary();
+    });
+  }
+
+  @override
+  void dispose() {
+    // Abandon any in-flight request when the sheet is dismissed.
+    context.read<AiProvider>().cancelInFlight();
+    super.dispose();
   }
 
   Future<void> _generateSummary() async {

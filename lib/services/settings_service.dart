@@ -7,6 +7,7 @@ class SettingsService {
 
   static const _apiKeyKey = 'anthropic_api_key';
   static const _preferLocalAiKey = 'prefer_local_ai';
+  static const _modelKeyKey = 'ai_model_key';
   final FlutterSecureStorage _secureStorage = const FlutterSecureStorage();
 
   Future<String?> getApiKey() async {
@@ -33,5 +34,15 @@ class SettingsService {
 
   Future<void> setPreferLocalAi(bool prefer) async {
     await _secureStorage.write(key: _preferLocalAiKey, value: prefer.toString());
+  }
+
+  /// AI model tier key ('fast' | 'balanced' | 'best'). Defaults to 'balanced'.
+  Future<String> getModelKey() async {
+    final value = await _secureStorage.read(key: _modelKeyKey);
+    return (value == null || value.isEmpty) ? 'balanced' : value;
+  }
+
+  Future<void> setModelKey(String key) async {
+    await _secureStorage.write(key: _modelKeyKey, value: key);
   }
 }

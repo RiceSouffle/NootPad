@@ -39,12 +39,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final key = await _settings.getApiKey();
       _apiKeyController.text = key ?? '';
     }
+    if (!mounted) return;
     setState(() => _isLoading = false);
   }
 
   Future<void> _saveApiKey() async {
     final key = _apiKeyController.text.trim();
-    if (key.isEmpty) return;
+    if (key.isEmpty) {
+      _showSnack('Enter your API key first.', AppColors.textLight);
+      return;
+    }
 
     await _settings.setApiKey(key);
     if (!mounted) return;
@@ -73,13 +77,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
     if (!mounted) return;
     HapticFeedback.mediumImpact();
     setState(() => _hasKey = false);
+    _showSnack('API key removed', AppColors.textLight);
+  }
+
+  void _showSnack(String message, Color color) {
+    if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          'API key removed',
+          message,
           style: GoogleFonts.quicksand(fontWeight: FontWeight.w600),
         ),
-        backgroundColor: AppColors.textLight,
+        backgroundColor: color,
         behavior: SnackBarBehavior.floating,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       ),
@@ -106,6 +115,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           _buildAiStatusSection(),
                           const SizedBox(height: 24),
                           _buildApiKeySection(),
+                          const SizedBox(height: 24),
+                          _buildModelSection(),
                           const SizedBox(height: 24),
                           _buildPrivacySection(),
                         ],
@@ -327,6 +338,125 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ],
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildModelSection() {
+    const options = [
+      ('fast', 'Fast', 'Quickest & most affordable', Icons.bolt_rounded),
+      ('balanced', 'Balanced', 'Great all-round quality', Icons.balance_rounded),
+      ('best', 'Best', 'Highest quality, slower', Icons.workspace_premium_rounded),
+    ];
+
+    return Consumer<AiProvider>(
+      builder: (context, aiProvider, _) => Container(
+        width: double.infinity,
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: AppColors.surface,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: AppColors.divider, width: 1.5),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'AI Model',
+              style: GoogleFonts.quicksand(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: AppColors.textDark,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'Choose the balance of speed, cost, and quality',
+              style: GoogleFonts.quicksand(
+                fontSize: 12,
+                color: AppColors.textLight,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+            const SizedBox(height: 14),
+            for (final option in options) ...[
+              _buildModelOption(
+                aiProvider: aiProvider,
+                value: option.$1,
+                label: option.$2,
+                subtitle: option.$3,
+                icon: option.$4,
+              ),
+              if (option != options.last) const SizedBox(height: 8),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildModelOption({
+    required AiProvider aiProvider,
+    required String value,
+    required String label,
+    required String subtitle,
+    required IconData icon,
+  }) {
+    final isSelected = aiProvider.modelKey == value;
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        aiProvider.setModel(value);
+      },
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+        decoration: BoxDecoration(
+          color: isSelected
+              ? AppColors.teal.withValues(alpha: 0.12)
+              : AppColors.surfaceWarm,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: isSelected
+                ? AppColors.teal.withValues(alpha: 0.5)
+                : AppColors.divider,
+            width: 1.5,
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(icon,
+                size: 20,
+                color: isSelected ? AppColors.teal : AppColors.textLight),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    label,
+                    style: GoogleFonts.quicksand(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textDark,
+                    ),
+                  ),
+                  Text(
+                    subtitle,
+                    style: GoogleFonts.quicksand(
+                      fontSize: 12,
+                      color: AppColors.textLight,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (isSelected)
+              const Icon(Icons.check_circle_rounded,
+                  size: 20, color: AppColors.teal),
+          ],
+        ),
       ),
     );
   }

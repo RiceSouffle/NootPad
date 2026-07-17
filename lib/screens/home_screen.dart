@@ -332,6 +332,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             _openNote(context);
           },
           elevation: 4,
+          tooltip: 'New Noot',
           child: const Icon(Icons.add_rounded, size: 30),
         ),
       ),
@@ -368,7 +369,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 ),
               ),
               child: Text(
-                '${provider.totalNotes} Noots',
+                '${provider.totalNotes} ${provider.totalNotes == 1 ? 'Noot' : 'Noots'}',
                 style: GoogleFonts.quicksand(
                   fontSize: 13,
                   fontWeight: FontWeight.w700,
@@ -378,23 +379,30 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
             ),
           ),
           const SizedBox(width: 8),
-          GestureDetector(
-            onTap: () {
-              HapticFeedback.lightImpact();
-              Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const SettingsScreen()),
-              );
-            },
-            child: Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(
-                color: AppColors.textDark.withValues(alpha: 0.05),
-                borderRadius: BorderRadius.circular(12),
+          Tooltip(
+            message: 'Settings',
+            child: GestureDetector(
+              onTap: () {
+                HapticFeedback.lightImpact();
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const SettingsScreen()),
+                );
+              },
+              child: Semantics(
+                button: true,
+                label: 'Settings',
+                child: Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: AppColors.textDark.withValues(alpha: 0.05),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.settings_rounded,
+                      size: 20, color: AppColors.textMedium),
+                ),
               ),
-              child: const Icon(Icons.settings_rounded,
-                  size: 20, color: AppColors.textMedium),
             ),
           ),
         ],
@@ -418,31 +426,38 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
               ),
               const SizedBox(width: 8),
               Consumer<AiProvider>(
-                builder: (context, aiProvider, _) => GestureDetector(
-                  onTap: () {
-                    HapticFeedback.lightImpact();
-                    if (aiProvider.isAvailable) {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) => const AiSearchScreen()),
-                      );
-                    } else {
-                      _showAiSetupPrompt(context);
-                    }
-                  },
-                  child: Container(
-                    width: 44,
-                    height: 44,
-                    decoration: BoxDecoration(
-                      color: AppColors.teal.withValues(alpha: 0.15),
-                      borderRadius: BorderRadius.circular(14),
-                      border: Border.all(
-                        color: AppColors.teal.withValues(alpha: 0.25),
+                builder: (context, aiProvider, _) => Tooltip(
+                  message: 'Ask Noot AI',
+                  child: GestureDetector(
+                    onTap: () {
+                      HapticFeedback.lightImpact();
+                      if (aiProvider.isAvailable) {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                              builder: (_) => const AiSearchScreen()),
+                        );
+                      } else {
+                        _showAiSetupPrompt(context);
+                      }
+                    },
+                    child: Semantics(
+                      button: true,
+                      label: 'Ask Noot AI',
+                      child: Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: AppColors.teal.withValues(alpha: 0.15),
+                          borderRadius: BorderRadius.circular(14),
+                          border: Border.all(
+                            color: AppColors.teal.withValues(alpha: 0.25),
+                          ),
+                        ),
+                        child: const Icon(Icons.auto_awesome_rounded,
+                            size: 22, color: AppColors.teal),
                       ),
                     ),
-                    child: const Icon(Icons.auto_awesome_rounded,
-                        size: 22, color: AppColors.teal),
                   ),
                 ),
               ),

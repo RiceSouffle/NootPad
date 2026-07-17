@@ -1,13 +1,16 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:flutter_quill/flutter_quill.dart';
 import 'package:uuid/uuid.dart';
 import '../models/note.dart';
 import '../services/database_service.dart';
+import '../services/image_service.dart';
 import '../services/widget_service.dart';
+import '../utils/delta_parser.dart';
 
 class NotesProvider extends ChangeNotifier {
   final DatabaseService _dbService = DatabaseService();
+  final ImageService _imageService = ImageService();
   final Uuid _uuid = const Uuid();
 
   List<Note> _notes = [];
@@ -16,9 +19,20 @@ class NotesProvider extends ChangeNotifier {
   String _selectedCategory = 'All';
   bool _isLoading = true;
 
+  Timer? _searchDebounce;
+  Timer? _syncDebounce;
+
+  /// Cache of lowercased plain text per note id, so search filtering doesn't
+  /// re-decode every Delta note on each keystroke.
+  final Map<String, String> _searchTextCache = {};
+
   List<Note> get notes => _searchQuery.isEmpty && _selectedCategory == 'All'
       ? _notes
       : _filteredNotes;
+
+  /// The complete, unfiltered note list — used by AI Q&A so it truly searches
+  /// everything regardless of the active on-screen filter.
+  List<Note> get allNotes => _notes;
 
   String get searchQuery => _searchQuery;
   String get selectedCategory => _selectedCategory;
@@ -37,11 +51,13 @@ class NotesProvider extends ChangeNotifier {
     notifyListeners();
 
     _notes = await _dbService.getAllNotes();
+    _searchTextCache.clear();
+    _sortNotes();
     _applyFilters();
 
     _isLoading = false;
     notifyListeners();
-    _syncWidgets();
+    _scheduleWidgetSync();
   }
 
   /// Validate that a decoded JSON value is a well-formed Delta ops array.
@@ -59,18 +75,7 @@ class NotesProvider extends ChangeNotifier {
     if (!note.isDelta || note.content.isEmpty) {
       return note.content;
     }
-    try {
-      final json = jsonDecode(note.content);
-      if (!isValidDelta(json)) return note.content;
-      final doc = Document.fromJson(json as List);
-      return doc.toPlainText().trim();
-    } on FormatException catch (e) {
-      debugPrint('Invalid Delta JSON in getPlainText: $e');
-      return note.content;
-    } catch (e) {
-      debugPrint('Error parsing Delta in getPlainText: $e');
-      return note.content;
-    }
+    return DeltaParser.extractPlainText(note.content);
   }
 
   Future<Note> createNote({
@@ -93,10 +98,11 @@ class NotesProvider extends ChangeNotifier {
     );
 
     await _dbService.insertNote(note);
-    _notes.insert(0, note);
+    _notes.add(note);
+    _sortNotes();
     _applyFilters();
     notifyListeners();
-    _syncWidgets();
+    _scheduleWidgetSync();
     return note;
   }
 
@@ -107,18 +113,29 @@ class NotesProvider extends ChangeNotifier {
     final index = _notes.indexWhere((n) => n.id == note.id);
     if (index != -1) {
       _notes[index] = updated;
+      _searchTextCache.remove(updated.id);
+      _sortNotes();
       _applyFilters();
       notifyListeners();
-      _syncWidgets();
+      _scheduleWidgetSync();
     }
   }
 
   Future<void> deleteNote(String id) async {
+    final index = _notes.indexWhere((n) => n.id == id);
+    final removed = index != -1 ? _notes[index] : null;
+
     await _dbService.deleteNote(id);
     _notes.removeWhere((n) => n.id == id);
+    _searchTextCache.remove(id);
     _applyFilters();
     notifyListeners();
-    _syncWidgets();
+    _scheduleWidgetSync();
+
+    // Clean up any image files this note owned so they don't leak forever.
+    if (removed != null) {
+      _deleteImagesFor(removed);
+    }
   }
 
   Future<void> togglePin(String id) async {
@@ -131,13 +148,10 @@ class NotesProvider extends ChangeNotifier {
       );
       await _dbService.updateNote(updated);
       _notes[index] = updated;
-      _notes.sort((a, b) {
-        if (a.isPinned != b.isPinned) return a.isPinned ? -1 : 1;
-        return b.updatedAt.compareTo(a.updatedAt);
-      });
+      _sortNotes();
       _applyFilters();
       notifyListeners();
-      _syncWidgets();
+      _scheduleWidgetSync();
     }
   }
 
@@ -186,9 +200,12 @@ class NotesProvider extends ChangeNotifier {
 
       await _dbService.updateNote(updated);
       _notes[index] = updated;
+      _searchTextCache.remove(updated.id);
+      // Toggling a checklist item shouldn't reshuffle the board under the
+      // user's finger, so keep position (no re-sort) here.
       _applyFilters();
       notifyListeners();
-      _syncWidgets();
+      _scheduleWidgetSync();
     } on FormatException catch (e) {
       debugPrint('Invalid JSON in checklist toggle: $e');
     } catch (e) {
@@ -198,8 +215,17 @@ class NotesProvider extends ChangeNotifier {
 
   void setSearchQuery(String query) {
     _searchQuery = query;
-    _applyFilters();
-    notifyListeners();
+    // Debounce filtering so rapid typing doesn't refilter on every keystroke.
+    _searchDebounce?.cancel();
+    if (query.isEmpty) {
+      _applyFilters();
+      notifyListeners();
+      return;
+    }
+    _searchDebounce = Timer(const Duration(milliseconds: 220), () {
+      _applyFilters();
+      notifyListeners();
+    });
   }
 
   void setCategory(String category) {
@@ -208,7 +234,37 @@ class NotesProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Sync current notes to home screen widgets.
+  void _sortNotes() {
+    _notes.sort((a, b) {
+      if (a.isPinned != b.isPinned) return a.isPinned ? -1 : 1;
+      return b.updatedAt.compareTo(a.updatedAt);
+    });
+  }
+
+  Future<void> _deleteImagesFor(Note note) async {
+    if (!note.isDelta || note.content.isEmpty) return;
+    try {
+      final images = DeltaParser.extractImages(note.content);
+      for (final path in images) {
+        if (ImageService.isSafeLocalPath(path)) {
+          final cleaned = path.replaceFirst('file://', '');
+          if (await _imageService.isValidImagePath(cleaned)) {
+            await _imageService.deleteImage(cleaned);
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('Error deleting note images: $e');
+    }
+  }
+
+  /// Sync current notes to home screen widgets (debounced to avoid a storm of
+  /// full re-serializations during rapid edits/checklist taps).
+  void _scheduleWidgetSync() {
+    _syncDebounce?.cancel();
+    _syncDebounce = Timer(const Duration(milliseconds: 700), _syncWidgets);
+  }
+
   void _syncWidgets() {
     WidgetService.syncRecentNotes(_notes)
         .then((_) => WidgetService.syncAllNotesForPicker(_notes))
@@ -217,18 +273,37 @@ class NotesProvider extends ChangeNotifier {
         .catchError((e) => debugPrint('Widget sync error: $e'));
   }
 
+  String _searchTextFor(Note note) {
+    return _searchTextCache.putIfAbsent(
+      note.id,
+      () => (note.isDelta ? getPlainText(note) : note.content).toLowerCase(),
+    );
+  }
+
   void _applyFilters() {
+    // If the selected category no longer exists (e.g. its last note was
+    // deleted or recategorized), fall back to 'All' instead of stranding an
+    // empty, misleading filter.
+    if (_selectedCategory != 'All' &&
+        !_notes.any((n) => n.category == _selectedCategory)) {
+      _selectedCategory = 'All';
+    }
+
     final query = _searchQuery.toLowerCase();
     _filteredNotes = _notes.where((note) {
       final matchesSearch = query.isEmpty ||
           note.title.toLowerCase().contains(query) ||
-          (note.isDelta
-                  ? getPlainText(note).toLowerCase()
-                  : note.content.toLowerCase())
-              .contains(query);
+          _searchTextFor(note).contains(query);
       final matchesCategory =
           _selectedCategory == 'All' || note.category == _selectedCategory;
       return matchesSearch && matchesCategory;
     }).toList();
+  }
+
+  @override
+  void dispose() {
+    _searchDebounce?.cancel();
+    _syncDebounce?.cancel();
+    super.dispose();
   }
 }

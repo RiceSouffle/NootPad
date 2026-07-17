@@ -14,15 +14,36 @@ class AiProvider extends ChangeNotifier {
   AiStatus _status = AiStatus.idle;
   String _result = '';
   String _errorMessage = '';
+  bool _lastTruncated = false;
 
   AiStatus get status => _status;
   String get result => _result;
   String get errorMessage => _errorMessage;
+
+  /// True when the most recent successful generation was cut off by the
+  /// model's token limit (so the UI can warn before a destructive replace).
+  bool get lastTruncated => _lastTruncated;
+
   bool get isAvailable => _aiService.isAvailable;
   AiBackend get activeBackend => _aiService.activeBackend;
+  String get modelKey => _aiService.modelKey;
+
+  // Coverage stats for the last Q&A, so the UI can be honest about what was
+  // actually searched.
+  int _lastNotesSearched = 0;
+  int _lastNotesTotal = 0;
+  bool _lastContextTruncated = false;
+  int get lastNotesSearched => _lastNotesSearched;
+  int get lastNotesTotal => _lastNotesTotal;
+  bool get lastContextTruncated => _lastContextTruncated;
 
   Future<void> initialize() async {
     await _aiService.initialize();
+    notifyListeners();
+  }
+
+  Future<void> setModel(String key) async {
+    await _aiService.setModelKey(key);
     notifyListeners();
   }
 
@@ -30,6 +51,7 @@ class AiProvider extends ChangeNotifier {
     _status = AiStatus.idle;
     _result = '';
     _errorMessage = '';
+    _lastTruncated = false;
     notifyListeners();
   }
 
@@ -45,12 +67,12 @@ class AiProvider extends ChangeNotifier {
       final result = await _aiService.generate(
         systemPrompt: AiPrompts.summarizeSystem,
         userPrompt: AiPrompts.summarizeUser(note.title, plainText),
-        maxTokens: 256,
+        maxTokens: 400,
       );
-      _setSuccess(result);
-      return result;
+      _setSuccess(result.text, truncated: result.truncated);
+      return result.text;
     } on AiUnavailableException {
-      _setError('Set up your API key in Settings to use AI features.');
+      _setError('Add your API key in Settings to use Noot AI.');
       rethrow;
     } catch (e) {
       if (_status != AiStatus.error) _setError(e.toString());
@@ -66,25 +88,32 @@ class AiProvider extends ChangeNotifier {
     _setLoading();
     try {
       final String userPrompt;
+      // Expand/continue can legitimately produce more text than the input, so
+      // give them more headroom to avoid mid-sentence truncation.
+      final int maxTokens;
       switch (action) {
         case WritingAction.expand:
           userPrompt = AiPrompts.writingExpand(selectedText);
+          maxTokens = 1024;
         case WritingAction.rewrite:
           userPrompt = AiPrompts.writingRewrite(selectedText);
+          maxTokens = 768;
         case WritingAction.shorten:
           userPrompt = AiPrompts.writingShorten(selectedText);
+          maxTokens = 512;
         case WritingAction.continueWriting:
           userPrompt = AiPrompts.writingContinue(selectedText);
+          maxTokens = 1024;
       }
       final result = await _aiService.generate(
         systemPrompt: AiPrompts.writingSystem,
         userPrompt: userPrompt,
-        maxTokens: 512,
+        maxTokens: maxTokens,
       );
-      _setSuccess(result);
-      return result;
+      _setSuccess(result.text, truncated: result.truncated);
+      return result.text;
     } on AiUnavailableException {
-      _setError('Set up your API key in Settings to use AI features.');
+      _setError('Add your API key in Settings to use Noot AI.');
       rethrow;
     } catch (e) {
       if (_status != AiStatus.error) _setError(e.toString());
@@ -102,15 +131,35 @@ class AiProvider extends ChangeNotifier {
         userPrompt: AiPrompts.categorizeUser(note.title, plainText),
         maxTokens: 20,
       );
-      _setSuccess(result.trim());
-      return result.trim();
+      final category = _sanitizeCategory(result.text);
+      if (category == null) {
+        _setError('Couldn\'t suggest a category.');
+        throw AiApiException('Invalid category suggestion');
+      }
+      _setSuccess(category);
+      return category;
     } on AiUnavailableException {
-      _setError('Set up your API key in Settings to use AI features.');
+      _setError('Add your API key in Settings to use Noot AI.');
       rethrow;
     } catch (e) {
       if (_status != AiStatus.error) _setError(e.toString());
       rethrow;
     }
+  }
+
+  /// Normalize a model category reply to a short, clean label, or null if the
+  /// reply doesn't look like a category (prompt-injection / chatty output).
+  String? _sanitizeCategory(String raw) {
+    var text = raw.trim();
+    if (text.isEmpty) return null;
+    // Take only the first line.
+    text = text.split('\n').first.trim();
+    // Strip surrounding quotes and trailing punctuation.
+    text = text.replaceAll(RegExp(r'''^["'`]+|["'`.!?,;:]+$'''), '').trim();
+    if (text.isEmpty || text.length > 30) return null;
+    final words = text.split(RegExp(r'\s+'));
+    if (words.length > 3) return null;
+    return text;
   }
 
   // -- AI Search / Q&A --
@@ -119,27 +168,39 @@ class AiProvider extends ChangeNotifier {
     required List<Note> notes,
   }) async {
     _setLoading();
+    _lastNotesTotal = notes.length;
+    _lastNotesSearched = 0;
+    _lastContextTruncated = false;
     try {
+      const budget = 12000;
+      const perNote = 800;
       final buffer = StringBuffer();
-      for (int i = 0; i < notes.length && buffer.length < 8000; i++) {
-        final note = notes[i];
+      var included = 0;
+      for (final note in notes) {
+        if (buffer.length >= budget) {
+          _lastContextTruncated = true;
+          break;
+        }
         final plainText = NotesProvider.getPlainText(note);
         buffer.writeln(
             '--- Note: ${note.title.isEmpty ? "Untitled" : note.title} ---');
-        buffer.writeln(plainText.length > 500
-            ? '${plainText.substring(0, 500)}...'
+        buffer.writeln(plainText.length > perNote
+            ? '${plainText.substring(0, perNote)}...'
             : plainText);
         buffer.writeln();
+        included++;
       }
+      _lastNotesSearched = included;
+
       final result = await _aiService.generate(
         systemPrompt: AiPrompts.qaSystem,
         userPrompt: AiPrompts.qaUser(question, buffer.toString()),
-        maxTokens: 512,
+        maxTokens: 1024,
       );
-      _setSuccess(result);
-      return result;
+      _setSuccess(result.text, truncated: result.truncated);
+      return result.text;
     } on AiUnavailableException {
-      _setError('Set up your API key in Settings to use AI features.');
+      _setError('Add your API key in Settings to use Noot AI.');
       rethrow;
     } catch (e) {
       if (_status != AiStatus.error) _setError(e.toString());
@@ -152,16 +213,23 @@ class AiProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Abort any in-flight request (called when an AI sheet is dismissed).
+  void cancelInFlight() {
+    _aiService.cancelInFlight();
+  }
+
   void _setLoading() {
     _status = AiStatus.loading;
     _result = '';
     _errorMessage = '';
+    _lastTruncated = false;
     notifyListeners();
   }
 
-  void _setSuccess(String result) {
+  void _setSuccess(String result, {bool truncated = false}) {
     _status = AiStatus.success;
     _result = result;
+    _lastTruncated = truncated;
     notifyListeners();
   }
 

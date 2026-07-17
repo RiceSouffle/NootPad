@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -34,6 +33,11 @@ class NoteCard extends StatelessWidget {
     // Build content preview once (avoids double-parsing Delta)
     final contentPreview = _buildContentPreview(context);
     final imageUrls = _extractImageUrls();
+    // Decode images downsized to roughly the card's on-screen size (2 columns).
+    final cacheWidth = (MediaQuery.sizeOf(context).width /
+            2 *
+            MediaQuery.devicePixelRatioOf(context))
+        .round();
 
     return GestureDetector(
       onTap: onTap,
@@ -64,7 +68,8 @@ class NoteCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // Image preview at top (Google Keep style)
-              if (imageUrls.isNotEmpty) _buildImagePreview(imageUrls),
+              if (imageUrls.isNotEmpty)
+                _buildImagePreview(imageUrls, cacheWidth),
 
               // Padded text content
               Padding(
@@ -146,35 +151,16 @@ class NoteCard extends StatelessWidget {
   // Image preview
   // ---------------------------------------------------------------------------
 
-  /// Extract image URLs/paths from the Delta JSON content.
+  /// Extract image URLs/paths from the Delta JSON content (cached, shared
+  /// with the line parse so the content is decoded once per note).
   List<String> _extractImageUrls() {
     if (!note.isDelta || note.content.isEmpty) return [];
-    try {
-      final decoded = jsonDecode(note.content);
-      if (decoded is! List) return [];
-      final images = <String>[];
-      for (final op in decoded) {
-        if (op is! Map<String, dynamic>) continue;
-        final insert = op['insert'];
-        if (insert is Map) {
-          final image = insert['image'];
-          if (image is String && image.isNotEmpty) {
-            images.add(image);
-          }
-        }
-      }
-      return images;
-    } on FormatException {
-      return [];
-    } catch (e) {
-      debugPrint('Error extracting image URLs: $e');
-      return [];
-    }
+    return DeltaParser.extractImages(note.content);
   }
 
   /// Build the image preview shown at the top of the card.
   /// Stacks images vertically like Google Keep.
-  Widget _buildImagePreview(List<String> imageUrls) {
+  Widget _buildImagePreview(List<String> imageUrls, int cacheWidth) {
     // Show up to 3 images stacked; scale height based on count
     const maxVisible = 3;
     final visible = imageUrls.take(maxVisible).toList();
@@ -206,7 +192,7 @@ class NoteCard extends StatelessWidget {
                 SizedBox(
                   width: double.infinity,
                   height: imageHeight,
-                  child: _buildImage(visible[i]),
+                  child: _buildImage(visible[i], cacheWidth),
                 ),
                 Positioned(
                   right: 6,
@@ -242,15 +228,16 @@ class NoteCard extends StatelessWidget {
             SizedBox(
               width: double.infinity,
               height: imageHeight,
-              child: _buildImage(visible[i]),
+              child: _buildImage(visible[i], cacheWidth),
             ),
         ],
       ],
     );
   }
 
-  /// Render a single image from a local path or network URL.
-  Widget _buildImage(String imageUrl) {
+  /// Render a single image from a local path or network URL, decoded at
+  /// roughly display size to avoid full-resolution decode jank.
+  Widget _buildImage(String imageUrl, int cacheWidth) {
     if (imageUrl.startsWith('/') || imageUrl.startsWith('file://')) {
       // Reject paths with traversal attempts
       if (!ImageService.isSafeLocalPath(imageUrl)) {
@@ -260,6 +247,8 @@ class NoteCard extends StatelessWidget {
         File(imageUrl.replaceFirst('file://', '')),
         fit: BoxFit.cover,
         width: double.infinity,
+        cacheWidth: cacheWidth,
+        filterQuality: FilterQuality.low,
         errorBuilder: (ctx, error, stack) => _buildImagePlaceholder(),
       );
     }
@@ -267,6 +256,8 @@ class NoteCard extends StatelessWidget {
       imageUrl,
       fit: BoxFit.cover,
       width: double.infinity,
+      cacheWidth: cacheWidth,
+      filterQuality: FilterQuality.low,
       errorBuilder: (ctx, error, stack) => _buildImagePlaceholder(),
     );
   }
@@ -308,6 +299,8 @@ class NoteCard extends StatelessWidget {
     final nonEmptyLines = lines.where((l) => !l.isEmpty).toList();
     if (nonEmptyLines.isEmpty) return null;
 
+    final textScaler = MediaQuery.textScalerOf(context);
+
     // Build preview widgets (max 6 lines)
     final displayLines = nonEmptyLines.take(6).toList();
     final widgets = <Widget>[];
@@ -323,9 +316,9 @@ class NoteCard extends StatelessWidget {
       }
 
       if (line.isChecklist) {
-        widgets.add(_buildChecklistRow(context, line));
+        widgets.add(_buildChecklistRow(context, line, textScaler));
       } else {
-        widgets.add(_buildRichTextLine(line, orderedListCounter));
+        widgets.add(_buildRichTextLine(line, orderedListCounter, textScaler));
       }
     }
 
@@ -353,7 +346,8 @@ class NoteCard extends StatelessWidget {
   }
 
   /// Build an interactive checklist row for the card.
-  Widget _buildChecklistRow(BuildContext context, DeltaLine line) {
+  Widget _buildChecklistRow(
+      BuildContext context, DeltaLine line, TextScaler textScaler) {
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
       onTap: () {
@@ -377,7 +371,7 @@ class NoteCard extends StatelessWidget {
             ),
             const SizedBox(width: 6),
             Expanded(
-              child: _buildChecklistText(line),
+              child: _buildChecklistText(line, textScaler),
             ),
           ],
         ),
@@ -386,7 +380,7 @@ class NoteCard extends StatelessWidget {
   }
 
   /// Build text for a checklist item with strikethrough when checked.
-  Widget _buildChecklistText(DeltaLine line) {
+  Widget _buildChecklistText(DeltaLine line, TextScaler textScaler) {
     final isChecked = line.isChecked;
     final baseColor = isChecked ? AppColors.textLight : AppColors.textMedium;
 
@@ -422,11 +416,13 @@ class NoteCard extends StatelessWidget {
       text: TextSpan(children: spans),
       maxLines: 1,
       overflow: TextOverflow.ellipsis,
+      textScaler: textScaler,
     );
   }
 
   /// Build a rich text line (with formatting, bullet/number prefix, heading style).
-  Widget _buildRichTextLine(DeltaLine line, int orderedIndex) {
+  Widget _buildRichTextLine(
+      DeltaLine line, int orderedIndex, TextScaler textScaler) {
     // Determine base style based on line type
     TextStyle baseStyle;
     if (line.isHeading) {
@@ -500,6 +496,7 @@ class NoteCard extends StatelessWidget {
         text: TextSpan(children: spans),
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
+        textScaler: textScaler,
       ),
     );
   }
@@ -526,6 +523,9 @@ class NoteCard extends StatelessWidget {
     if (diff.inHours < 1) return '${diff.inMinutes}m ago';
     if (diff.inDays < 1) return '${diff.inHours}h ago';
     if (diff.inDays < 7) return '${diff.inDays}d ago';
-    return DateFormat('MMM d').format(date);
+    // Include the year for notes from a different year so they aren't
+    // mistaken for this year's.
+    if (date.year == now.year) return DateFormat('MMM d').format(date);
+    return DateFormat('MMM d, yyyy').format(date);
   }
 }
